@@ -1,8 +1,8 @@
-package com.example.demo.service;
+package com.example.youthy.service;
 
-import com.example.demo.domain.Member;
-import com.example.demo.dto.KakaoDTO;
-import com.example.demo.repository.MemberRepository;
+import com.example.youthy.domain.Member;
+import com.example.youthy.dto.KakaoDTO;
+import com.example.youthy.repository.MemberRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;

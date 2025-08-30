@@ -1,6 +1,6 @@
 package com.example.youthy.repository;
 
-import com.example.demo.domain.Member;
+import com.example.youthy.domain.Member;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,6 +1,6 @@
-package com.example.demo.service;
+package com.example.youthy.service;
 
-import com.example.demo.repository.MemberRepository;
+import com.example.youthy.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
