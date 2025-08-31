@@ -1,12 +1,14 @@
 package com.example.youthy.dto;
 
-import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
-@Builder
-@Data
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class KakaoDTO {
-
-    private long id;
-    private String nickname;
+    private String accessToken;
 }

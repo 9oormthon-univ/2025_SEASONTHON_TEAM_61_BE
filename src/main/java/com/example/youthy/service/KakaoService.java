@@ -1,124 +1,131 @@
+// src/main/java/com/example/youthy/service/KakaoService.java
 package com.example.youthy.service;
 
 import com.example.youthy.domain.Member;
-import com.example.youthy.dto.KakaoDTO;
 import com.example.youthy.repository.MemberRepository;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import lombok.RequiredArgsConstructor;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.util.Date;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class KakaoService {
 
+    @Value("${kakao.client.id}")   private String clientId;
+    @Value("${kakao.client.secret:}") private String clientSecret; // 없으면 빈 문자열
+    @Value("${kakao.login.redirect}") private String redirectUri;
+    @Value("${kakao.logout.redirect}") private String logoutRedirect;
+    @Value("${jwt.secret}") private String jwtSecret;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    // 필드 주입
     private final MemberRepository memberRepository;
+    private final TokenService tokenService;
 
-    @Value("${kakao.client.id}")
-    private String KAKAO_CLIENT_ID;
+    public String getAccessToken(String code) {
+        String url = "https://kauth.kakao.com/oauth/token";
 
-    @Value("${kakao.client.secret}")
-    private String KAKAO_CLIENT_SECRET;
-
-    @Value("${kakao.login.redirect}")   // 🔑 로그인 콜백 전용만 사용
-    private String KAKAO_LOGIN_REDIRECT;
-
-    private static final String KAKAO_AUTH_URI = "https://kauth.kakao.com";
-    private static final String KAKAO_API_URI  = "https://kapi.kakao.com";
-
-    public String getKakaoLogin() {
-        return KAKAO_AUTH_URI + "/oauth/authorize"
-                + "?client_id=" + KAKAO_CLIENT_ID
-                + "&redirect_uri=" + KAKAO_LOGIN_REDIRECT
-                + "&response_type=code";
-    }
-
-    public KakaoDTO getKakaoInfo(String code) throws Exception {
-        if (code == null) throw new Exception("Failed get authorization code");
-
-        String accessToken;
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-type", "application/x-www-form-urlencoded");
-
-            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-            params.add("grant_type", "authorization_code");
-            params.add("client_id", KAKAO_CLIENT_ID);
-            params.add("client_secret", KAKAO_CLIENT_SECRET);
-            params.add("code", code);
-            params.add("redirect_uri", KAKAO_LOGIN_REDIRECT); // ✅ 로그인 redirect 만 사용
-
-            RestTemplate restTemplate = new RestTemplate();
-            HttpEntity<MultiValueMap<String, String>> httpEntity = new HttpEntity<>(params, headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(
-                    KAKAO_AUTH_URI + "/oauth/token",
-                    HttpMethod.POST,
-                    httpEntity,
-                    String.class
-            );
-
-            JSONParser jsonParser = new JSONParser();
-            JSONObject jsonObj = (JSONObject) jsonParser.parse(response.getBody());
-            accessToken = (String) jsonObj.get("access_token");
-
-        } catch (Exception e) {
-            throw new Exception("API call failed", e);
+        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+        params.add("grant_type", "authorization_code");
+        params.add("client_id", clientId.trim());
+        params.add("redirect_uri", redirectUri.trim());
+        params.add("code", code.trim());
+        if (!clientSecret.isBlank()) {
+            params.add("client_secret", clientSecret.trim());
         }
 
-        return getUserInfoWithToken(accessToken);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.valueOf("application/x-www-form-urlencoded;charset=UTF-8"));
+        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
+
+        try {
+            ResponseEntity<Map<String, Object>> res = restTemplate.exchange(
+                    url, HttpMethod.POST, request, new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+            Map<String, Object> body = res.getBody();
+            if (body == null || !body.containsKey("access_token")) {
+                throw new IllegalStateException("No access_token in response: " + body);
+            }
+            return (String) body.get("access_token");
+        } catch (HttpStatusCodeException e) {
+            throw new IllegalStateException("Kakao token error: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        }
     }
 
+    public Map<String, Object> getUserInfo(String accessToken) {
+        String url = "https://kapi.kakao.com/v2/user/me";
 
-    private KakaoDTO getUserInfoWithToken(String accessToken) throws Exception {
         HttpHeaders headers = new HttpHeaders();
-        headers.add("Authorization", "Bearer " + accessToken);
-        headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
+        headers.setBearerAuth(accessToken);
 
-        RestTemplate rt = new RestTemplate();
-        // 헤더만 담을 때는 Void로!
-        HttpEntity<Void> httpEntity = new HttpEntity<>(headers);
-
-        ResponseEntity<String> response = rt.exchange(
-                KAKAO_API_URI + "/v2/user/me",
-                HttpMethod.POST,
-                httpEntity,
-                String.class
+        ResponseEntity<Map<String, Object>> res = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers),
+                new ParameterizedTypeReference<Map<String, Object>>() {}
         );
+        return res.getBody();
+    }
 
-        JSONParser jsonParser = new JSONParser();
-        JSONObject jsonObj = (JSONObject) jsonParser.parse(response.getBody());
-        JSONObject account = (JSONObject) jsonObj.get("kakao_account");
-        JSONObject profile = (JSONObject) account.get("profile");
+    // ✅ kakaoId 기준으로 업서트하고 JWT 생성
+    public com.example.youthy.dto.Tokens processUser(Map<String, Object> userInfo) {
+        Long kakaoId = Long.valueOf(userInfo.get("id").toString());
+        Map<String, Object> kakaoAccount = (Map<String, Object>) userInfo.get("kakao_account");
+        Map<String, Object> properties   = (Map<String, Object>) userInfo.get("properties");
 
-        Long id = (Long) jsonObj.get("id");
-        String nickname = String.valueOf(profile.get("nickname"));
+        String email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
+        String nickname = properties != null ? (String) properties.get("nickname") : null;
 
-        // 필요시: 이미 존재하면 재저장하지 않도록 로직 추가 가능
-        Member member = new Member();
-        member.setUsername(nickname);
+        Member member = memberRepository.findByKakaoId(kakaoId)
+                .map(m -> {
+                    if (nickname != null && !nickname.equals(m.getUsername())) m.setUsername(nickname);
+                    if (email != null && (m.getEmail() == null || !email.equals(m.getEmail()))) m.setEmail(email);
+                    return m;
+                })
+                .orElseGet(() -> Member.builder()
+                        .kakaoId(kakaoId)
+                        .email(email)
+                        .username(nickname)
+                        .build());
+
         memberRepository.save(member);
 
-        HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-        HttpSession session = request.getSession();
-        session.setAttribute("member", member);
+        // 🔧 여기 수정: TokenService 최신 시그니처에 맞춤
+        String access = tokenService.createAccessToken(member);
+        String refresh = tokenService.issueRefreshToken(member, null, null); // UA/IP 없으면 null로 OK
 
-        return KakaoDTO.builder()
-                .id(id)
-                .nickname(nickname)
-                .build();
+        return new com.example.youthy.dto.Tokens(access, refresh);
+    }
+
+    // (현재는 미사용) 직접 JWT 만들고 싶을 때 예시
+    private String createJwtToken(Member member) {
+        long now = System.currentTimeMillis();
+        long validityMs = 1000L * 60 * 60; // 1시간
+
+        return Jwts.builder()
+                .setSubject(String.valueOf(member.getKakaoId()))
+                .claim("id", member.getId())
+                .claim("kakaoId", member.getKakaoId())
+                .claim("username", member.getUsername())
+                .setIssuedAt(new Date(now))
+                .setExpiration(new Date(now + validityMs))
+                .signWith(SignatureAlgorithm.HS256, jwtSecret.getBytes())
+                .compact();
+    }
+
+    public String buildKakaoLogoutUrl() {
+        return "https://kauth.kakao.com/oauth/logout?client_id=" + clientId + "&logout_redirect_uri=" + logoutRedirect;
     }
 }
