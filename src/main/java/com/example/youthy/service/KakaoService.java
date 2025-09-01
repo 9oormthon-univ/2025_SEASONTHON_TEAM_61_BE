@@ -29,8 +29,6 @@ public class KakaoService {
     @Value("${jwt.secret}") private String jwtSecret;
 
     private final RestTemplate restTemplate = new RestTemplate();
-
-    // 필드 주입
     private final MemberRepository memberRepository;
     private final TokenService tokenService;
 

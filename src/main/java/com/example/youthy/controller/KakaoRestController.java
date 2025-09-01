@@ -53,8 +53,8 @@ public class KakaoRestController {
                                       HttpServletRequest req,
                                       HttpServletResponse res) {
         try {
-            String accessTokenFromKakao = kakaoService.getAccessToken(code);
-            Map<String, Object> userInfo = kakaoService.getUserInfo(accessTokenFromKakao);
+            String accessTokenFromKakao = kakaoService.getAccessToken(code); // 카카오 임시 code로 카카오 정식 token 발급
+            Map<String, Object> userInfo = kakaoService.getUserInfo(accessTokenFromKakao); // token으로 유저 정보 조회
 
             // 회원 upsert + access/refresh 발급 (TokenService 내부 회전 규칙 일관 적용)
             Tokens tokens = kakaoService.processUser(userInfo);
@@ -74,7 +74,7 @@ public class KakaoRestController {
         }
     }
 
-    /** POST /kakao/auth/refresh : refresh로 새 access 발급(회전) */
+    /** POST /kakao/auth/refresh : refresh로 새 access token 발급(회전) */
     @PostMapping("/auth/refresh")
     public ResponseEntity<?> refresh(HttpServletRequest req,
                                      HttpServletResponse res,
