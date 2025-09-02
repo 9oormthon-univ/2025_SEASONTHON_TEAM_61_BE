@@ -85,6 +85,10 @@ public class YouthPolicy {
     @Column(name = "required_documents")
     private String requiredDocuments; // 제출 서류 (sbmsnDcmntCn)
 
+    // **조회수 필드 추가**
+    @Column(name = "view_count")
+    private int viewCount = 0; // 조회수 (Youthy 서비스 자체 관리)
+
     @Builder
     public YouthPolicy(String policyNo, String policyName, String policyField, String supportContent, String operationPeriod, String applicationPeriod, String supportScale, Integer minAge, Integer maxAge, String residence, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
         this.policyNo = policyNo;
@@ -110,4 +114,3 @@ public class YouthPolicy {
         this.requiredDocuments = requiredDocuments;
     }
 }
-
