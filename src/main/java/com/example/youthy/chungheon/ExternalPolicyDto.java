@@ -132,10 +132,12 @@ public class ExternalPolicyDto {
         // Helper 메서드: 소득 조건 정보를 하나의 문자열로 조합
         private String buildIncomeCondition() {
             StringJoiner joiner = new StringJoiner("\n");
-            if(StringUtils.hasText(this.earnMinAmt) || StringUtils.hasText(this.earnMaxAmt)) {
-                String range = String.format("소득범위: %s원 ~ %s원",
-                        StringUtils.hasText(this.earnMinAmt) ? this.earnMinAmt : "제한없음",
-                        StringUtils.hasText(this.earnMaxAmt) ? this.earnMaxAmt : "제한없음");
+            boolean isIncomeUnlimited ="0".equals(this.earnMinAmt) && "0".equals(this.earnMaxAmt);
+            if(isIncomeUnlimited){
+                joiner.add("소득범위: 제한없음");
+            }
+            else if(StringUtils.hasText(this.earnMinAmt) || StringUtils.hasText(this.earnMaxAmt)) {
+                String range = String.format("소득범위: %s원 ~ %s원", this.earnMinAmt, this.earnMaxAmt);
                 joiner.add(range);
             }
             if(StringUtils.hasText(this.earnEtcCn)){
