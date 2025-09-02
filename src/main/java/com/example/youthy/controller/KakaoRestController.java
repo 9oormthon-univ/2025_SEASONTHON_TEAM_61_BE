@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Hidden;
 
 import java.util.Map;
 
@@ -129,6 +130,7 @@ public class KakaoRestController {
     }
 
     /** POST /kakao/auth/logout-all : 모든 기기에서 로그아웃(멤버 전체 refresh 폐기) */
+    @Hidden
     @PostMapping("/auth/logout-all")
     public ResponseEntity<?> logoutAll(@CurrentMember Member member,
                                        HttpServletResponse res) {
@@ -146,6 +148,7 @@ public class KakaoRestController {
     }
 
     /** GET /kakao/logout-url : 카카오 로그아웃 리디렉트 URL */
+    @Hidden
     @GetMapping("/logout-url")
     public ResponseEntity<?> logoutUrl() {
         return ResponseEntity.ok(Map.of(
