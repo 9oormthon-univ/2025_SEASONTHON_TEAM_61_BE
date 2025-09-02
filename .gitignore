@@ -40,3 +40,6 @@ out/
 application.properties
 application.yml
 .env
+
+# ignore zips
+*.zip

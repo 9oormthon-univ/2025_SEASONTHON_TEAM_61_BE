@@ -25,22 +25,32 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'com.googlecode.json-simple:json-simple:1.1.1'
-	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
-	implementation 'io.jsonwebtoken:jjwt-impl:0.11.5'
-	implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5'
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+	// JSON-simple (안 쓰면 제거해도 됨)
+	implementation 'com.googlecode.json-simple:json-simple:1.1.1'
+
+	// JJWT: api만 implementation, 나머지는 runtimeOnly 로 두는 게 정석
+	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+	runtimeOnly   'io.jsonwebtoken:jjwt-impl:0.11.5'
+	runtimeOnly   'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
+	// springdoc: 2.6.0이 Boot 3.x와 가장 호환 안정적
+	// (2.7.0도 동작하지만, 이전에 속성 바인딩 이슈가 있었으니 우선 2.6.0 권장)
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
+
 	compileOnly 'org.projectlombok:lombok'
-	runtimeOnly 'com.h2database:h2'
 	annotationProcessor 'org.projectlombok:lombok'
+
+	runtimeOnly 'com.h2database:h2'
+
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
 }
+
 
 tasks.named('test') {
 	useJUnitPlatform()
