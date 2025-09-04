@@ -20,13 +20,6 @@ public interface YouthPolicyRepository extends JpaRepository<YouthPolicy, String
      */
     Page<YouthPolicy> findByPolicyNameContaining(String keyword, Pageable pageable);
 
-    /**
-     * 특정 연령이 지원 가능한 정책을 조회합니다.
-     * (예: 25세 사용자는 minAge <= 25 이고 maxAge >= 25인 정책을 검색)
-     * @param age 사용자의 나이
-     * @return 페이징된 정책 목록
-     */
-    //Page<YouthPolicy> findByMinAgeLessThanEqualAndMaxAgeGreaterThanEqual(Integer age, Pageable pageable);
 
     /**
      * 여러 정책 분야에 해당하는 정책 목록을 조회합니다.
