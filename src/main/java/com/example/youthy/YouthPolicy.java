@@ -6,6 +6,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * 청년 정책 정보를 저장하는 데이터베이스 테이블과 매핑되는 JPA 엔티티 클래스
  */
@@ -43,8 +46,8 @@ public class YouthPolicy {
     @Column(name = "max_age")
     private Integer maxAge; // 지원 연령 (최대) (sprtTrgtMaxAge)
 
-    @Column(name = "residence")
-    private String residence; // 거주지역 (zipCd)
+    @OneToMany(mappedBy = "youthPolicy", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<PolicyResidence> residences = new HashSet<>();
 
     @Lob
     @Column(name = "income_condition")
@@ -84,13 +87,13 @@ public class YouthPolicy {
     @Lob
     @Column(name = "required_documents")
     private String requiredDocuments; // 제출 서류 (sbmsnDcmntCn)
-
+  
     // **조회수 필드 추가**
     @Column(name = "view_count")
     private int viewCount = 0; // 조회수 (Youthy 서비스 자체 관리)
 
     @Builder
-    public YouthPolicy(String policyNo, String policyName, String policyField, String supportContent, String operationPeriod, String applicationPeriod, String supportScale, Integer minAge, Integer maxAge, String residence, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
+    public YouthPolicy(String policyNo, String policyName, String policyField, String supportContent, String operationPeriod, String applicationPeriod, String supportScale, Integer minAge, Integer maxAge, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
         this.policyNo = policyNo;
         this.policyName = policyName;
         this.policyField = policyField;
@@ -100,7 +103,6 @@ public class YouthPolicy {
         this.supportScale = supportScale;
         this.minAge = minAge;
         this.maxAge = maxAge;
-        this.residence = residence;
         this.incomeCondition = incomeCondition;
         this.educationRequirement = educationRequirement;
         this.majorRequirement = majorRequirement;
@@ -112,5 +114,10 @@ public class YouthPolicy {
         this.evaluationAndAnnouncement = evaluationAndAnnouncement;
         this.applicationSite = applicationSite;
         this.requiredDocuments = requiredDocuments;
+    }
+    //== 연관관계 편의 메서드 ==//
+    public void addResidence(String zipCode) {
+        PolicyResidence residence = new PolicyResidence(this, zipCode);
+        this.residences.add(residence);
     }
 }
