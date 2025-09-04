@@ -6,24 +6,26 @@ import lombok.*;
 
 @Entity
 @Getter @Setter
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
-@Table(name = "member", indexes = {
-        @Index(name = "idx_member_kakao_id", columnList = "kakaoId", unique = true)
-})
+@NoArgsConstructor @AllArgsConstructor
 public class Member {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ✅ 카카오 고유 ID(반드시 unique)
-    @Column(nullable = false, unique = true)
     private Long kakaoId;
 
-    // 동의 안 받으면 null 가능
+    private String username;
+
     private String email;
 
-    // 카카오 닉네임
-    private String username;
+    /** 서버측 토큰 무효화를 위한 버전 */
+    @Builder.Default              // ✅ 빌더 사용 시에도 기본값 유지
+    @Column(nullable = false)
+    private int tokenVersion = 0;
+
+    public void bumpTokenVersion() {
+        this.tokenVersion++;
+    }
 }

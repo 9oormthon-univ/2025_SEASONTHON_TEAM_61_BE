@@ -1,195 +1,200 @@
-// src/main/java/com/example/youthy/controller/KakaoRestController.java
 package com.example.youthy.controller;
 
-import com.example.youthy.config.CurrentMember;
 import com.example.youthy.domain.Member;
-import com.example.youthy.dto.Tokens;
 import com.example.youthy.repository.MemberRepository;
 import com.example.youthy.service.KakaoService;
 import com.example.youthy.service.TokenService;
 import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.StringUtils;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import io.swagger.v3.oas.annotations.Hidden;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Objects;
 
-@RequiredArgsConstructor
 @RestController
 @RequestMapping("/kakao")
-@Validated
 public class KakaoRestController {
+
+    @Value("${kakao.client.id}")
+    private String kakaoClientId;
+
+    @Value("${kakao.login.redirect}")
+    private String serverCallbackRedirectUri;
+
+    @Value("${app.front-url:http://localhost:3000}")
+    private String frontBaseUrl;
+
+    /** DEV: http → false, PROD: https → true */
+    @Value("${app.cookie.secure:false}")
+    private boolean secureCookie;
+
+    private static final String SAME_SITE = "Lax";
+
+    @Value("${jwt.access-validity-seconds:900}")
+    private int accessTtlSeconds;
+
+    @Value("${jwt.refresh-validity-seconds:1209600}")
+    private int refreshTtlSeconds;
 
     private final KakaoService kakaoService;
     private final TokenService tokenService;
     private final MemberRepository memberRepository;
 
-    // --- Request DTOs --------------------------------------------------------
-
-    @Data
-    public static class RefreshRequest {
-        // 바디로 전달 시 { "refreshToken": "rt_xxx" }
-        @NotBlank(message = "refreshToken is required")
-        private String refreshToken;
+    public KakaoRestController(KakaoService kakaoService,
+                               TokenService tokenService,
+                               MemberRepository memberRepository) {
+        this.kakaoService = kakaoService;
+        this.tokenService = tokenService;
+        this.memberRepository = memberRepository;
     }
 
-    @Data
-    public static class LogoutRequest {
-        // 바디로 전달 시 { "refreshToken": "rt_xxx" } (쿠키/헤더가 있으면 생략 가능)
-        private String refreshToken;
+    // 1) 로그인 시작
+    @GetMapping("/auth/login")
+    public void login(@RequestParam(value = "state", required = false) String state,
+                      HttpServletResponse res) throws IOException {
+        String authorizeUrl = buildAuthorizeUrl(kakaoClientId, serverCallbackRedirectUri, state);
+        res.sendRedirect(authorizeUrl);
     }
 
-    // --- Endpoints -----------------------------------------------------------
-
-    /** GET /kakao/callback?code=... : 카카오 로그인 콜백 */
+    // 2) 콜백: code → kakaoId → (회원 조회/생성) → 버전 포함 JWT 발급 → 쿠키 세팅 → 프론트 이동
     @GetMapping("/callback")
-    public ResponseEntity<?> callback(@RequestParam("code") String code,
-                                      HttpServletRequest req,
-                                      HttpServletResponse res) {
+    public void callback(@RequestParam("code") @NotBlank String code,
+                         @RequestParam(value = "state", required = false) String state,
+                         HttpServletResponse res) throws IOException {
         try {
-            String accessTokenFromKakao = kakaoService.getAccessToken(code); // 카카오 임시 code로 카카오 정식 token 발급
-            Map<String, Object> userInfo = kakaoService.getUserInfo(accessTokenFromKakao); // token으로 유저 정보 조회
+            // 1) code -> token
+            Map<String, Object> token = kakaoService.exchangeCodeForToken(code);
+            if (token == null || token.get("access_token") == null) {
+                res.sendRedirect(frontBaseUrl + "/login/failed");
+                return;
+            }
+            String accessTokenFromKakao = (String) token.get("access_token");
 
-            // 회원 upsert + access/refresh 발급 (TokenService 내부 회전 규칙 일관 적용)
-            Tokens tokens = kakaoService.processUser(userInfo);
+            // 2) token -> userInfo (/v2/user/me)
+            Map<String, Object> userInfo = kakaoService.getUserInfo(accessTokenFromKakao);
+            if (userInfo == null || userInfo.get("id") == null) {
+                res.sendRedirect(frontBaseUrl + "/login/failed");
+                return;
+            }
 
-            // refresh를 HttpOnly 쿠키로 내려주고, access는 바디로 반환
-            setRefreshCookie(res, tokens.getRefresh());
+            // 3) DB 저장/갱신 + 우리 JWT 발급 (nickname/email 반영)
+            var tokens = kakaoService.loginOrSignup(userInfo);
 
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "accessToken", tokens.getAccess()
-            ));
+            // 4) 우리 쿠키 세팅
+            setCookie(res, "access_token",  tokens.getAccessToken(),  accessTtlSeconds,  secureCookie, SAME_SITE);
+            setCookie(res, "refresh_token", tokens.getRefreshToken(), refreshTtlSeconds, secureCookie, SAME_SITE);
+
+            // 5) 프론트로 이동
+            String redirect = frontBaseUrl + "/login/success";
+            if (state != null && !state.isBlank()) {
+                redirect += "?state=" + URLEncoder.encode(state, StandardCharsets.UTF_8);
+            }
+            res.sendRedirect(redirect);
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", e.getMessage()
-            ));
+            // (선택) 로그 남기기
+            // log.error("Kakao callback error", e);
+            res.sendRedirect(frontBaseUrl + "/login/failed");
         }
     }
 
-    /** POST /kakao/auth/refresh : refresh로 새 access token 발급(회전) */
+    // 3) 리프레시: refresh 검증 → subject로 회원 조회 → DB 버전으로 새 access 발급
     @PostMapping("/auth/refresh")
-    public ResponseEntity<?> refresh(HttpServletRequest req,
-                                     HttpServletResponse res,
-                                     @RequestHeader(value = "X-Refresh", required = false) String hdrRefresh,
-                                     @RequestBody(required = false) RefreshRequest body // 쿠키/헤더 쓰면 바디 생략 가능
-    ) {
-        String cookieRefresh = readRefreshCookie(req);
-        String bodyRefresh = (body != null) ? body.getRefreshToken() : null;
-        String provided = firstNonEmpty(cookieRefresh, hdrRefresh, bodyRefresh);
-
-        if (!StringUtils.hasText(provided)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status","error","message","Refresh token missing"
-            ));
+    public ResponseEntity<?> refresh(@CookieValue(name = "refresh_token", required = false) String refreshCookie,
+                                     HttpServletResponse res) {
+        if (refreshCookie == null || !tokenService.validate(refreshCookie)) {
+            return ResponseEntity.status(401).body(Map.of("error","Unauthorized","message","Invalid refresh cookie"));
+        }
+        String kakaoId = tokenService.getSubject(refreshCookie);
+        Integer vInToken = tokenService.getVersion(refreshCookie);
+        if (kakaoId == null || vInToken == null) {
+            return ResponseEntity.status(401).body(Map.of("error","Unauthorized","message","Invalid refresh"));
         }
 
-        var tokens = tokenService.refresh(provided,
-                req.getHeader("User-Agent"), clientIp(req));
+        Member m = memberRepository.findByKakaoId(Long.valueOf(kakaoId))
+                .orElse(null);
+        if (m == null) {
+            return ResponseEntity.status(401).body(Map.of("error","Unauthorized","message","Member not found"));
+        }
 
-        // 회전된 새 refresh를 쿠키로 내려줌
-        setRefreshCookie(res, tokens.refresh());
+        // ★ 서버(DB)의 현 버전으로 재발급 (토큰의 v와 달라도 상관 없음)
+        String newAccess = tokenService.issueAccessToken(kakaoId, m.getTokenVersion());
+        setCookie(res, "access_token", newAccess, accessTtlSeconds, secureCookie, SAME_SITE);
 
-        return ResponseEntity.ok(Map.of(
-                "status","success",
-                "access", tokens.access()
-        ));
+        return ResponseEntity.ok(Map.of("status","success"));
     }
 
-    /** POST /kakao/auth/logout : 현재 디바이스 로그아웃(해당 refresh만 폐기) */
+    // 4) 로그아웃: (필터 적용) → DB 버전 +1 → 쿠키 삭제
     @PostMapping("/auth/logout")
-    public ResponseEntity<?> logout(HttpServletRequest req,
-                                    HttpServletResponse res,
-                                    @RequestHeader(value = "X-Refresh", required = false) String hdrRefresh,
-                                    @RequestBody(required = false) LogoutRequest body
-    ) {
-        String cookieRefresh = readRefreshCookie(req);
-        String bodyRefresh = (body != null) ? body.getRefreshToken() : null;
-        String provided = firstNonEmpty(cookieRefresh, hdrRefresh, bodyRefresh);
-
-        if (!StringUtils.hasText(provided)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status","error","message","Refresh token missing"
-            ));
+    public ResponseEntity<?> logout(@CookieValue(name = "refresh_token", required = false) String refreshCookie,
+                                    @CookieValue(name = "access_token", required = false) String accessCookie,
+                                    HttpServletResponse res) {
+        // 현재 로그인한 주체는 필터에서 SecurityContext에 들어있지만,
+        // 여기서는 간단히 refresh에서 subject를 꺼내 조회해도 됨(쿠키-온리 전제)
+        if (refreshCookie == null || !tokenService.validate(refreshCookie)) {
+            // 그래도 버전만 올리면 과거 토큰 무효화 되므로, access로도 시도 가능(선택)
+            clearCookie(res, "access_token", secureCookie, SAME_SITE);
+            clearCookie(res, "refresh_token", secureCookie, SAME_SITE);
+            return ResponseEntity.ok(Map.of("status","logged_out"));
         }
 
-        tokenService.revokeOneByRefresh(provided);
-        clearRefreshCookie(res);
+        String kakaoId = tokenService.getSubject(refreshCookie);
+        Member m = (kakaoId == null) ? null :
+                memberRepository.findByKakaoId(Long.valueOf(kakaoId)).orElse(null);
 
-        return ResponseEntity.ok(Map.of(
-                "status","success","message","Logged out on this device"
-        ));
-    }
-
-    /** POST /kakao/auth/logout-all : 모든 기기에서 로그아웃(멤버 전체 refresh 폐기) */
-    @Hidden
-    @PostMapping("/auth/logout-all")
-    public ResponseEntity<?> logoutAll(@CurrentMember Member member,
-                                       HttpServletResponse res) {
-        if (member == null) {
-            return ResponseEntity.status(401).body(Map.of(
-                    "status","error","message","Unauthorized"
-            ));
+        if (m != null) {
+            m.bumpTokenVersion();               // ★ 핵심: 버전 증가 = 모든 기존 토큰 즉시 무효
+            memberRepository.save(m);
         }
-        long n = tokenService.revokeAllFor(member.getId());
-        clearRefreshCookie(res);
-        return ResponseEntity.ok(Map.of(
-                "status","success",
-                "revoked", n
-        ));
+
+        clearCookie(res, "access_token", secureCookie, SAME_SITE);
+        clearCookie(res, "refresh_token", secureCookie, SAME_SITE);
+        tokenService.revokeRefresh(refreshCookie); // 무상태(NOP)
+        return ResponseEntity.ok(Map.of("status","logged_out"));
     }
 
-    /** GET /kakao/logout-url : 카카오 로그아웃 리디렉트 URL */
-    @Hidden
-    @GetMapping("/logout-url")
-    public ResponseEntity<?> logoutUrl() {
-        return ResponseEntity.ok(Map.of(
-                "logoutUrl", kakaoService.buildKakaoLogoutUrl()
-        ));
-    }
-
-    // --- Helpers -------------------------------------------------------------
-
-    private static String clientIp(HttpServletRequest req) {
-        String fwd = req.getHeader("X-Forwarded-For");
-        if (StringUtils.hasText(fwd)) return fwd.split(",")[0].trim();
-        return req.getRemoteAddr();
-    }
-
-    private static String readRefreshCookie(HttpServletRequest req) {
-        if (req.getCookies() == null) return null;
-        for (Cookie c : req.getCookies()) {
-            if ("refresh".equals(c.getName())) return c.getValue();
+    // ----------------- 내부 유틸 -----------------
+    private static String buildAuthorizeUrl(String clientId, String redirectUri, String state) {
+        StringBuilder sb = new StringBuilder("https://kauth.kakao.com/oauth/authorize")
+                .append("?response_type=code")
+                .append("&client_id=").append(url(clientId))
+                .append("&redirect_uri=").append(url(redirectUri))
+                // ✅ 이메일/닉네임/프로필 이미지 받기
+                .append("&scope=").append(url("account_email profile_nickname"));
+        // (선택) 매번 동의창 띄우고 싶으면 아래 주석 해제
+        // .append("&prompt=consent")
+        if (state != null && !state.isBlank()) {
+            sb.append("&state=").append(url(state));
         }
-        return null;
+        return sb.toString();
     }
 
-    private static void setRefreshCookie(HttpServletResponse res, String refresh) {
-        Cookie c = new Cookie("refresh", refresh);
+    private static String url(String s) { return URLEncoder.encode(s, StandardCharsets.UTF_8); }
+
+    private static void setCookie(HttpServletResponse res, String name, String value,
+                                  int maxAgeSeconds, boolean secure, String sameSite) {
+        Cookie c = new Cookie(name, value == null ? "" : value);
         c.setHttpOnly(true);
+        c.setSecure(secure);
         c.setPath("/");
-        c.setMaxAge(60 * 60 * 24 * 14); // 14일
-        // 운영 시 HTTPS라면: c.setSecure(true);
+        c.setMaxAge(Math.max(maxAgeSeconds, 0));
         res.addCookie(c);
+
+        StringBuilder header = new StringBuilder();
+        header.append(name).append("=").append(value == null ? "" : value)
+                .append("; Path=/; HttpOnly; SameSite=").append(sameSite);
+        if (secure) header.append("; Secure");
+        header.append("; Max-Age=").append(Math.max(maxAgeSeconds, 0));
+        res.addHeader("Set-Cookie", header.toString());
     }
 
-    private static void clearRefreshCookie(HttpServletResponse res) {
-        Cookie c = new Cookie("refresh", "");
-        c.setPath("/");
-        c.setMaxAge(0);
-        res.addCookie(c);
-    }
-
-    private static String firstNonEmpty(String... vals) {
-        for (String v : vals) if (StringUtils.hasText(v)) return v;
-        return null;
+    private static void clearCookie(HttpServletResponse res, String name, boolean secure, String sameSite) {
+        setCookie(res, name, "", 0, secure, sameSite);
     }
 }

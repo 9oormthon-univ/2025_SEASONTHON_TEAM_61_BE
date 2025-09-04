@@ -1,96 +1,119 @@
+// src/main/java/com/example/youthy/config/JwtAuthFilter.java
 package com.example.youthy.config;
 
 import com.example.youthy.domain.Member;
 import com.example.youthy.repository.MemberRepository;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.Key;
+import java.util.List;
 import java.util.Optional;
 
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private final String jwtSecret;
+    private final Key key;
     private final MemberRepository memberRepository;
 
     public JwtAuthFilter(String jwtSecret, MemberRepository memberRepository) {
-        this.jwtSecret = jwtSecret;
+        this.key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
         this.memberRepository = memberRepository;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // /api/** 만 보호
-        return !request.getRequestURI().startsWith("/api/");
+        String uri = request.getRequestURI();
+        // 보호 경로: /api/**, /kakao/auth/logout 만 필터 적용
+        boolean needsAuth = uri.startsWith("/api/") || "/kakao/auth/logout".equals(uri);
+        return !needsAuth; // 보호 경로가 아니면 필터 스킵
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest req,
-                                    HttpServletResponse res,
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        String header = req.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
-            writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Missing Bearer token");
-            return;
-        }
-
-        String token = header.substring(7);
         try {
-            // JJWT 0.11.x: setSigningKey + parseClaimsJws
-            Claims claims = Jwts.parser()
-                    .setSigningKey(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
+            String token = resolveAccessTokenFromCookie(request);
+            if (token == null) {
+                unauthorized(response, "Missing access_token cookie");
+                return;
+            }
+
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
                     .parseClaimsJws(token)
                     .getBody();
 
-            // 우선 memberId, 없으면 id 허용(호환)
-            Long memberId = claims.get("memberId", Long.class);
-            if (memberId == null) {
-                Object idObj = claims.get("id");
-                if (idObj instanceof Number num) {
-                    memberId = num.longValue();
-                } else if (idObj != null) {
-                    try {
-                        memberId = Long.parseLong(idObj.toString());
-                    } catch (NumberFormatException ignore) { /* 무시 */ }
-                }
-            }
-
-            if (memberId == null) {
-                writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                        "Missing member id claim");
+            String kakaoIdStr = claims.getSubject();
+            Integer vInToken = claims.get("v", Integer.class);  // ★ 버전 클레임 추출
+            if (kakaoIdStr == null || kakaoIdStr.isBlank() || vInToken == null) {
+                unauthorized(response, "Invalid token subject/version");
                 return;
             }
 
-            Optional<Member> opt = memberRepository.findById(memberId);
-            if (opt.isEmpty()) {
-                writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                        "User not found");
+            Long kakaoId = Long.parseLong(kakaoIdStr);
+            Member member = memberRepository.findByKakaoId(kakaoId).orElse(null);
+            if (member == null) {
+                unauthorized(response, "Member not found for token subject");
                 return;
             }
 
-            // 컨트롤러에서 @CurrentMember 로 주입받도록 setAttribute
-            req.setAttribute("authMember", opt.get());
-            chain.doFilter(req, res);
+// ★ 서버(DB) 버전과 토큰 버전 일치 확인
+            if (member.getTokenVersion() != vInToken.intValue()) {
+                unauthorized(response, "Token version mismatch");
+                return;
+            }
 
-        } catch (JwtException e) {
-            // 서명 불일치/만료/손상 등 JWT 관련 예외
-            writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Invalid or expired token");
+            var auth = new UsernamePasswordAuthenticationToken(member, null, List.of());
+            auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(auth);
+
+            chain.doFilter(request, response);
+
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            unauthorized(response, "Token expired");
+        } catch (io.jsonwebtoken.JwtException e) {
+            unauthorized(response, "Invalid token");
+        } catch (Exception e) {
+            unauthorized(response, "Auth error: " + e.getMessage());
         }
     }
 
-    private static void writeJson(HttpServletResponse res, int status, String message) throws IOException {
-        res.setStatus(status);
-        res.setContentType("application/json;charset=UTF-8");
-        res.getWriter().write("{\"status\":\"error\",\"message\":\"" + message + "\"}");
+    private String resolveAccessTokenFromCookie(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (Cookie c : cookies) {
+            if ("access_token".equals(c.getName())) {
+                String v = c.getValue();
+                if (v != null && !v.isBlank()) return v.trim();
+            }
+        }
+        return null;
+    }
+
+    private Optional<Long> parseLongSafe(String s) {
+        try { return Optional.of(Long.parseLong(s)); }
+        catch (NumberFormatException e) { return Optional.empty(); }
+    }
+
+    private void unauthorized(HttpServletResponse response, String message) throws IOException {
+        if (!response.isCommitted()) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"" + message + "\"}");
+        }
     }
 }
