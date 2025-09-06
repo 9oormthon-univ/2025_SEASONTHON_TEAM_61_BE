@@ -1,15 +1,17 @@
 // src/main/java/com/example/youthy/controller/KakaoRestController.java
 package com.example.youthy.controller;
 
-import com.example.youthy.dto.Tokens; // DTO (com.example.youthy.dto.Tokens)
+import com.example.youthy.dto.Tokens;
 import com.example.youthy.service.KakaoService;
-import com.example.youthy.service.TokenService; // service.TokenService.Tokens (내부 record 반환 주의)
+import com.example.youthy.service.TokenService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -24,11 +26,22 @@ import java.util.Map;
 @Tag(name = "kakao-rest-controller", description = "Kakao OAuth & Auth")
 public class KakaoRestController {
 
-    // 운영(HTTPS) 쿠키 설정
-    private static final String COOKIE_DOMAIN   = null;   // 필요 시 ".yourdomain.com"
-    private static final boolean COOKIE_SECURE  = true;   // HTTPS
-    private static final String COOKIE_SAMESITE = "None"; // 크로스사이트 허용
-    private static final int REFRESH_MAX_AGE    = 60 * 60 * 24 * 7;
+    // ✅ application.yml에서 주입
+    @Value("${app.cookie.domain:}")
+    private String cookieDomain;
+
+    @Value("${app.cookie.secure:true}")
+    private boolean cookieSecure;
+
+    @Value("${app.cookie.samesite:None}")
+    private String cookieSameSite;
+
+    @Value("${app.cookie.path:/}")
+    private String cookiePath;
+
+    // refresh 쿠키 Max-Age(초) - yml의 app.refresh.validity-seconds 사용
+    @Value("${app.refresh.validity-seconds:604800}")
+    private int refreshMaxAge;
 
     private final KakaoService kakaoService;
     private final TokenService tokenService;
@@ -56,12 +69,12 @@ public class KakaoRestController {
         String ua = firstNonEmpty(httpReq.getHeader("User-Agent"), "unknown");
         String ip = firstNonEmpty(httpReq.getHeader("X-Forwarded-For"), httpReq.getRemoteAddr());
 
-        // KakaoService 내부에서 service.TokenService.Tokens가 아닌 DTO Tokens를 반환하도록 구현했거나,
-        // 아래처럼 DTO로 감싸서 사용합니다.
         Tokens tokens = kakaoService.processUser(userInfo, ua, ip);
 
-        // 5) Refresh = HttpOnly 쿠키(운영 속성), Access = JSON
-        CookieWriter.writeRefreshCookie(httpRes, tokens.getRefresh(), REFRESH_MAX_AGE, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
+        // 5) Refresh = HttpOnly 쿠키(환경별 속성), Access = JSON
+        CookieWriter.writeRefreshCookie(
+                httpRes, tokens.getRefresh(), refreshMaxAge, cookieDomain, cookieSecure, cookieSameSite, cookiePath
+        );
 
         return ResponseEntity.ok(Map.of(
                 "access", tokens.getAccess(),
@@ -87,12 +100,12 @@ public class KakaoRestController {
         String ua = firstNonEmpty(req.getHeader("User-Agent"), "unknown");
         String ip = firstNonEmpty(req.getHeader("X-Forwarded-For"), req.getRemoteAddr());
 
-        // service.TokenService.Tokens -> DTO Tokens 변환
-        var pair = tokenService.refresh(provided, ua, ip); // 반환 타입: com.example.youthy.service.TokenService.Tokens
-        Tokens tokens = new Tokens(pair.getAccess(), pair.getRefresh());
+        Tokens tokens = tokenService.refresh(provided, ua, ip);
 
-        // 회전된 새 refresh를 운영 속성으로 재발급
-        CookieWriter.writeRefreshCookie(res, tokens.getRefresh(), REFRESH_MAX_AGE, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
+        // 회전된 새 refresh를 환경별 속성으로 재발급
+        CookieWriter.writeRefreshCookie(
+                res, tokens.getRefresh(), refreshMaxAge, cookieDomain, cookieSecure, cookieSameSite, cookiePath
+        );
 
         return ResponseEntity.ok(Map.of("status","success","access", tokens.getAccess()));
     }
@@ -112,7 +125,7 @@ public class KakaoRestController {
         }
 
         tokenService.revokeOneByRefresh(provided);
-        CookieWriter.clearRefreshCookie(res, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
+        CookieWriter.clearRefreshCookie(res, cookieDomain, cookieSecure, cookieSameSite, cookiePath);
 
         return ResponseEntity.ok(Map.of("status","success","message","Logged out on this device"));
     }
@@ -136,17 +149,20 @@ public class KakaoRestController {
         return StringUtils.hasText(a) ? a : b;
     }
     private static String readRefreshCookie(HttpServletRequest req) {
-        if (req.getCookies() == null) return null;
-        for (var c : req.getCookies()) if ("refresh".equals(c.getName())) return c.getValue();
+        Cookie[] cookies = req.getCookies();
+        if (cookies == null) return null;
+        for (Cookie c : cookies) {
+            if ("refresh".equals(c.getName())) return c.getValue();
+        }
         return null;
     }
 
     // 쿠키 발급/삭제 유틸 (속성 동일 유지 중요)
     static class CookieWriter {
         static void writeRefreshCookie(HttpServletResponse res, String refresh, int maxAgeSeconds,
-                                       String domain, boolean secure, String sameSite) {
+                                       String domain, boolean secure, String sameSite, String path) {
             StringBuilder c = new StringBuilder("refresh=").append(refresh)
-                    .append("; Path=/")
+                    .append("; Path=").append(StringUtils.hasText(path) ? path : "/")
                     .append("; HttpOnly")
                     .append("; Max-Age=").append(maxAgeSeconds);
             if (secure) c.append("; Secure");
@@ -154,9 +170,9 @@ public class KakaoRestController {
             if (StringUtils.hasText(sameSite)) c.append("; SameSite=").append(sameSite);
             res.addHeader("Set-Cookie", c.toString());
         }
-        static void clearRefreshCookie(HttpServletResponse res, String domain, boolean secure, String sameSite) {
+        static void clearRefreshCookie(HttpServletResponse res, String domain, boolean secure, String sameSite, String path) {
             StringBuilder c = new StringBuilder("refresh=")
-                    .append("; Path=/")
+                    .append("; Path=").append(StringUtils.hasText(path) ? path : "/")
                     .append("; HttpOnly")
                     .append("; Max-Age=0");
             if (secure) c.append("; Secure");

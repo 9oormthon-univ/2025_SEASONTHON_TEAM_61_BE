@@ -1,5 +1,6 @@
 package com.example.youthy.service;
 
+import com.example.youthy.dto.Tokens; // ★ DTO 사용
 import com.example.youthy.domain.Member;
 import com.example.youthy.domain.RefreshToken;
 import com.example.youthy.repository.RefreshTokenRepository;
@@ -47,7 +48,6 @@ public class TokenService {
                 .compact();
     }
 
-
     /** Refresh 토큰 생성 + 저장 */
     public String mintRefresh(Member m, String userAgent, String ip) {
         String jti = UUID.randomUUID().toString();
@@ -70,15 +70,6 @@ public class TokenService {
         return refresh;
     }
 
-    /** Access/Refresh 페어 */
-    public record Tokens(String access, String refresh) {
-        // 기존 DTO와 호환되는 getter 이름 추가
-        public String getAccessToken() { return access; }
-        public String getRefreshToken() { return refresh; }
-        public String getAccess() { return access; }
-        public String getRefresh() { return refresh; }
-    }
-
     /** 회전 발급 */
     public Tokens rotateAndIssue(Member m, String oldRefreshOrNull, String userAgent, String ip) {
         if (oldRefreshOrNull != null && oldRefreshOrNull.startsWith("rt_")) {
@@ -90,7 +81,7 @@ public class TokenService {
         }
         String access = createAccess(m, accessTtl);
         String refresh = mintRefresh(m, userAgent, ip);
-        return new Tokens(access, refresh);
+        return new Tokens(access, refresh); // ★ DTO 반환
     }
 
     /** 재발급 */
@@ -127,7 +118,7 @@ public class TokenService {
         return (s.length() > 256) ? s.substring(0, 256) : s;
     }
 
-    /* ===================== 호환용 메서드 추가 ===================== */
+    /* ===================== 호환용 메서드 유지 ===================== */
 
     // 기존 이름: createAccessToken
     public String createAccessToken(Member m) {
@@ -154,12 +145,16 @@ public class TokenService {
         return rt;
     }
 
-    // 기존 이름: rotateRefreshToken
+    // 기존 이름: rotateRefreshToken (주의: 실제 사용처에 맞게 유지/정리)
     public RefreshToken rotateRefreshToken(RefreshToken validRt, Member m) {
         validRt.setRotated(true);
         refreshRepo.save(validRt);
-        // 새로운 refresh 발급
+
+        // 새로운 refresh 발급 (DB 저장은 mintRefresh에서 처리)
         String newPlain = mintRefresh(m, null, null);
+
+        // 아래 엔티티 조립은 사용처가 따로 transient 필드를 기대한다면 그대로 두되,
+        // 일반적으로는 mintRefresh의 반환값(newPlain)을 컨트롤러/서비스 레벨에서 활용하세요.
         RefreshToken entity = RefreshToken.builder()
                 .memberId(m.getId())
                 .jti(UUID.randomUUID().toString())
@@ -168,7 +163,7 @@ public class TokenService {
                 .revoked(false)
                 .rotated(false)
                 .build();
-        entity.setToken(newPlain); // transient 필드에 plain 담아둠
+        // entity.setToken(newPlain); // 엔티티에 해당 세터가 없다면 주석 유지
         return entity;
     }
 

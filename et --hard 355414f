@@ -1,0 +1,26 @@
+[33m355414f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdev[m[33m, [m[1;31morigin/dev[m[33m)[m 프론트 콜백 수정2차, health api 추가
+[33m1985510[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m docs: dockerfile
+[33m2ebad0f[m Merge pull request #9 from 9oormthon-univ/feat/#5
+[33m3edfe11[m[33m ([m[1;31morigin/feat/#5[m[33m)[m Merge branch 'dev' into feat/#5
+[33m1d7dcf9[m feat: 마감된 정책 제거 (#7)
+[33mf786116[m chore: buildIncomeCondition (#5)
+[33ma40c8f6[m feat : connect external db (#5)
+[33m91603f2[m feat : 조회수 파라미터 추가
+[33m93f9848[m Merge pull request #4 from 9oormthon-univ/feat/#3
+[33m4a39d81[m Merge branch 'dev' of https://github.com/9oormthon-univ/2025_SEASONTHON_TEAM_61_BE into feat/#3
+[33mac6236a[m[33m ([m[1;31morigin/feat/#3[m[33m)[m delete : 외부 API 접근 파일(#3)
+[33m0562b43[m feat : entity and repo
+[33m8e715f4[m refactor: delete blank
+[33mb6ffc76[m Merge pull request #2 from 9oormthon-univ/1-feat-카카오-로그인-apitest
+[33m31020ee[m merge 1-feat-카카오-로그인-apitest
+[33m6a3ad20[m[33m ([m[1;31morigin/1-feat-카카오-로그인-apitest[m[33m, [m[1;32m1-feat-카카오-로그인-apitest[m[33m)[m 버전 수정
+[33maf29bc0[m 스웨거 분리 제거
+[33m6cd7739[m Delete src/main/java/com/example/youthy/util/JwtUtil.java
+[33ma56caba[m Delete src/main/java/com/example/youthy.zip
+[33m7193e70[m 스웨거 프론트용 DTO 작업 시작
+[33mc955dfa[m api 중복제거
+[33ma16c57b[m swagger 문서화 및 카카오 로그인 + JWT 인증/인가(Access/Refresh 토큰) 구현 1차
+[33m1fa1296[m 2차 커밋_Youthy로 프로젝트 명 변경
+[33mcacf9ba[m 2차 병합 완료_프로젝트 명 youthy로 변경
+[33m6854548[m 1차 병합 완료
+[33m242c902[m chore: 프로젝트 초기 세팅

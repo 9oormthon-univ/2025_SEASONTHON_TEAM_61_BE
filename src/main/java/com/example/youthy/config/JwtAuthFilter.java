@@ -28,7 +28,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // /api/** 만 보호
+        // /api/** 만 보호 (그 외: /kakao/**, /health, /swagger-ui/**, /v3/api-docs/** 등은 우회)
         return !request.getRequestURI().startsWith("/api/");
     }
 
@@ -45,53 +45,48 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String header = req.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
-            writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Missing Bearer token");
+            writeJson(res, HttpServletResponse.SC_UNAUTHORIZED, "Missing Bearer token");
             return;
         }
 
-        String token = header.substring(7);
+        String token = header.substring(7).trim();
         try {
-            // JJWT 0.11.x: setSigningKey + parseClaimsJws
-            Claims claims = Jwts.parser()
+            // ★ JJWT 최신 사용법: parserBuilder
+            Claims claims = Jwts.parserBuilder()
                     .setSigningKey(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
+                    .build()
                     .parseClaimsJws(token)
                     .getBody();
 
-            // 우선 memberId, 없으면 id 허용(호환)
+            // memberId 우선, 없으면 id를 허용(호환)
             Long memberId = claims.get("memberId", Long.class);
             if (memberId == null) {
                 Object idObj = claims.get("id");
                 if (idObj instanceof Number num) {
                     memberId = num.longValue();
                 } else if (idObj != null) {
-                    try {
-                        memberId = Long.parseLong(idObj.toString());
-                    } catch (NumberFormatException ignore) { /* 무시 */ }
+                    try { memberId = Long.parseLong(idObj.toString()); } catch (NumberFormatException ignore) {}
                 }
             }
 
             if (memberId == null) {
-                writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                        "Missing member id claim");
+                writeJson(res, HttpServletResponse.SC_UNAUTHORIZED, "Missing member id claim");
                 return;
             }
 
             Optional<Member> opt = memberRepository.findById(memberId);
             if (opt.isEmpty()) {
-                writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                        "User not found");
+                writeJson(res, HttpServletResponse.SC_UNAUTHORIZED, "User not found");
                 return;
             }
 
-            // 컨트롤러에서 @CurrentMember 로 주입받도록 setAttribute
+            // 컨트롤러에서 @CurrentMember 로 주입받도록 setAttribute (프로젝트 정책에 맞춰 유지)
             req.setAttribute("authMember", opt.get());
             chain.doFilter(req, res);
 
         } catch (JwtException e) {
             // 서명 불일치/만료/손상 등 JWT 관련 예외
-            writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Invalid or expired token");
+            writeJson(res, HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
         }
     }
 
