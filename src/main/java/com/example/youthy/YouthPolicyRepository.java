@@ -20,7 +20,6 @@ public interface YouthPolicyRepository extends JpaRepository<YouthPolicy, String
      */
     Page<YouthPolicy> findByPolicyNameContaining(String keyword, Pageable pageable);
 
-
     /**
      * 여러 정책 분야에 해당하는 정책 목록을 조회합니다.
      * @param fields 정책 분야 리스트
