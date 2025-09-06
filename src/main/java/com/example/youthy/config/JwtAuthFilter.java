@@ -36,6 +36,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req,
                                     HttpServletResponse res,
                                     FilterChain chain) throws ServletException, IOException {
+
+        // ✅ CORS preflight 는 바로 통과
+        if ("OPTIONS".equalsIgnoreCase(req.getMethod())) {
+            chain.doFilter(req, res);
+            return;
+        }
+
         String header = req.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
             writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
