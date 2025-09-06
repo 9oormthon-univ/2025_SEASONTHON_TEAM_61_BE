@@ -24,6 +24,9 @@ public class YouthPolicy {
     @Column(name = "policy_name", nullable = false)
     private String policyName; // 정책명 (plcyNm)
 
+    @Column(name = "policy_summary", columnDefinition = "TEXT")
+    private String policySummary; // 정책설명(plcyExplnCn)
+
     @Column(name = "policy_field")
     private String policyField; // 정책분야 (lclsfNm, mclsfNm)
 
@@ -86,9 +89,10 @@ public class YouthPolicy {
     private int viewCount = 0; // 조회수 (Youthy 서비스 자체 관리)
 
     @Builder
-    public YouthPolicy(String policyNo, String policyName, String policyField, String supportContent, String operationPeriod, String applicationPeriod, String supportScale, Integer minAge, Integer maxAge, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
+    public YouthPolicy(String policyNo, String policyName, String policySummary, String policyField, String supportContent, String operationPeriod, String applicationPeriod, String supportScale, Integer minAge, Integer maxAge, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
         this.policyNo = policyNo;
         this.policyName = policyName;
+        this.policySummary = policySummary;
         this.policyField = policyField;
         this.supportContent = supportContent;
         this.operationPeriod = operationPeriod;
