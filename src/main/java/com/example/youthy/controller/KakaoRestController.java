@@ -1,23 +1,19 @@
 // src/main/java/com/example/youthy/controller/KakaoRestController.java
 package com.example.youthy.controller;
 
-import com.example.youthy.config.CurrentMember;
-import com.example.youthy.domain.Member;
-import com.example.youthy.dto.Tokens;
-import com.example.youthy.repository.MemberRepository;
+import com.example.youthy.dto.Tokens; // DTO (com.example.youthy.dto.Tokens)
 import com.example.youthy.service.KakaoService;
-import com.example.youthy.service.TokenService;
-import jakarta.servlet.http.Cookie;
+import com.example.youthy.service.TokenService; // service.TokenService.Tokens (내부 record 반환 주의)
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import io.swagger.v3.oas.annotations.Hidden;
 
 import java.util.Map;
 
@@ -25,171 +21,148 @@ import java.util.Map;
 @RestController
 @RequestMapping("/kakao")
 @Validated
+@Tag(name = "kakao-rest-controller", description = "Kakao OAuth & Auth")
 public class KakaoRestController {
+
+    // 운영(HTTPS) 쿠키 설정
+    private static final String COOKIE_DOMAIN   = null;   // 필요 시 ".yourdomain.com"
+    private static final boolean COOKIE_SECURE  = true;   // HTTPS
+    private static final String COOKIE_SAMESITE = "None"; // 크로스사이트 허용
+    private static final int REFRESH_MAX_AGE    = 60 * 60 * 24 * 7;
 
     private final KakaoService kakaoService;
     private final TokenService tokenService;
-    private final MemberRepository memberRepository;
 
-    // --- Request DTOs --------------------------------------------------------
+    @Operation(summary = "카카오 코드 교환", description = "프론트로 받은 code+redirectUri로 카카오 토큰을 교환하고, 서비스 Access/Refresh를 발급합니다.")
+    @PostMapping("/auth/code")
+    public ResponseEntity<?> exchangeCode(@RequestBody AuthCodeReq req,
+                                          HttpServletRequest httpReq,
+                                          HttpServletResponse httpRes) {
 
-    @Data
-    public static class RefreshRequest {
-        // 바디로 전달 시 { "refreshToken": "rt_xxx" }
-        @NotBlank(message = "refreshToken is required")
-        private String refreshToken;
-    }
-
-    @Data
-    public static class LogoutRequest {
-        // 바디로 전달 시 { "refreshToken": "rt_xxx" } (쿠키/헤더가 있으면 생략 가능)
-        private String refreshToken;
-    }
-
-    // --- Endpoints -----------------------------------------------------------
-
-    /** GET /kakao/callback?code=... : 카카오 로그인 콜백 */
-    @GetMapping("/callback")
-    public ResponseEntity<?> callback(@RequestParam("code") String code,
-                                      HttpServletRequest req,
-                                      HttpServletResponse res) {
-        try {
-            String accessTokenFromKakao = kakaoService.getAccessToken(code); // 카카오 임시 code로 카카오 정식 token 발급
-            Map<String, Object> userInfo = kakaoService.getUserInfo(accessTokenFromKakao); // token으로 유저 정보 조회
-
-            // 회원 upsert + access/refresh 발급 (TokenService 내부 회전 규칙 일관 적용)
-            Tokens tokens = kakaoService.processUser(userInfo);
-
-            // refresh를 HttpOnly 쿠키로 내려주고, access는 바디로 반환
-            setRefreshCookie(res, tokens.getRefresh());
-
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "accessToken", tokens.getAccess()
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", e.getMessage()
-            ));
+        if (!StringUtils.hasText(req.code) || !StringUtils.hasText(req.redirectUri)) {
+            return ResponseEntity.badRequest().body(Map.of("status","error","message","code and redirectUri are required"));
         }
+
+        // 1) redirectUri 화이트리스트 검사
+        kakaoService.validateRedirectOrigin(req.redirectUri);
+
+        // 2) 카카오 access_token 교환 (redirectUri 반드시 포함)
+        String kakaoAccessToken = kakaoService.getAccessTokenWithRedirect(req.code, req.redirectUri);
+
+        // 3) 카카오 유저 정보 조회
+        Map<String, Object> userInfo = kakaoService.getUserInfo(kakaoAccessToken);
+
+        // 4) 회원 upsert + 우리 토큰 발급 (UA/IP 로깅)
+        String ua = firstNonEmpty(httpReq.getHeader("User-Agent"), "unknown");
+        String ip = firstNonEmpty(httpReq.getHeader("X-Forwarded-For"), httpReq.getRemoteAddr());
+
+        // KakaoService 내부에서 service.TokenService.Tokens가 아닌 DTO Tokens를 반환하도록 구현했거나,
+        // 아래처럼 DTO로 감싸서 사용합니다.
+        Tokens tokens = kakaoService.processUser(userInfo, ua, ip);
+
+        // 5) Refresh = HttpOnly 쿠키(운영 속성), Access = JSON
+        CookieWriter.writeRefreshCookie(httpRes, tokens.getRefresh(), REFRESH_MAX_AGE, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
+
+        return ResponseEntity.ok(Map.of(
+                "access", tokens.getAccess(),
+                "tokenType", "Bearer",
+                "expiresIn", 3600
+        ));
     }
 
-    /** POST /kakao/auth/refresh : refresh로 새 access token 발급(회전) */
+    @Operation(summary = "액세스 재발급", description = "Refresh로 새 Access를 발급하고, 회전된 새 Refresh 쿠키를 내려줍니다.")
     @PostMapping("/auth/refresh")
     public ResponseEntity<?> refresh(HttpServletRequest req,
                                      HttpServletResponse res,
                                      @RequestHeader(value = "X-Refresh", required = false) String hdrRefresh,
-                                     @RequestBody(required = false) RefreshRequest body // 쿠키/헤더 쓰면 바디 생략 가능
-    ) {
-        String cookieRefresh = readRefreshCookie(req);
-        String bodyRefresh = (body != null) ? body.getRefreshToken() : null;
-        String provided = firstNonEmpty(cookieRefresh, hdrRefresh, bodyRefresh);
+                                     @RequestBody(required = false) RefreshRequest body) {
 
+        String cookieRefresh = readRefreshCookie(req);
+        String bodyRefresh   = (body != null) ? body.getRefreshToken() : null;
+        String provided      = firstNonEmpty(cookieRefresh, firstNonEmpty(hdrRefresh, bodyRefresh));
         if (!StringUtils.hasText(provided)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status","error","message","Refresh token missing"
-            ));
+            return ResponseEntity.badRequest().body(Map.of("status","error","message","Refresh token missing"));
         }
 
-        var tokens = tokenService.refresh(provided,
-                req.getHeader("User-Agent"), clientIp(req));
+        String ua = firstNonEmpty(req.getHeader("User-Agent"), "unknown");
+        String ip = firstNonEmpty(req.getHeader("X-Forwarded-For"), req.getRemoteAddr());
 
-        // 회전된 새 refresh를 쿠키로 내려줌
-        setRefreshCookie(res, tokens.refresh());
+        // service.TokenService.Tokens -> DTO Tokens 변환
+        var pair = tokenService.refresh(provided, ua, ip); // 반환 타입: com.example.youthy.service.TokenService.Tokens
+        Tokens tokens = new Tokens(pair.getAccess(), pair.getRefresh());
 
-        return ResponseEntity.ok(Map.of(
-                "status","success",
-                "access", tokens.access()
-        ));
+        // 회전된 새 refresh를 운영 속성으로 재발급
+        CookieWriter.writeRefreshCookie(res, tokens.getRefresh(), REFRESH_MAX_AGE, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
+
+        return ResponseEntity.ok(Map.of("status","success","access", tokens.getAccess()));
     }
 
-    /** POST /kakao/auth/logout : 현재 디바이스 로그아웃(해당 refresh만 폐기) */
+    @Operation(summary = "현재 기기 로그아웃", description = "제공된 Refresh를 폐기하고, 클라이언트의 refresh 쿠키를 삭제합니다.")
     @PostMapping("/auth/logout")
     public ResponseEntity<?> logout(HttpServletRequest req,
                                     HttpServletResponse res,
                                     @RequestHeader(value = "X-Refresh", required = false) String hdrRefresh,
-                                    @RequestBody(required = false) LogoutRequest body
-    ) {
-        String cookieRefresh = readRefreshCookie(req);
-        String bodyRefresh = (body != null) ? body.getRefreshToken() : null;
-        String provided = firstNonEmpty(cookieRefresh, hdrRefresh, bodyRefresh);
+                                    @RequestBody(required = false) LogoutRequest body) {
 
+        String cookieRefresh = readRefreshCookie(req);
+        String bodyRefresh   = (body != null) ? body.getRefreshToken() : null;
+        String provided      = firstNonEmpty(cookieRefresh, firstNonEmpty(hdrRefresh, bodyRefresh));
         if (!StringUtils.hasText(provided)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status","error","message","Refresh token missing"
-            ));
+            return ResponseEntity.badRequest().body(Map.of("status","error","message","Refresh token missing"));
         }
 
         tokenService.revokeOneByRefresh(provided);
-        clearRefreshCookie(res);
+        CookieWriter.clearRefreshCookie(res, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
 
-        return ResponseEntity.ok(Map.of(
-                "status","success","message","Logged out on this device"
-        ));
+        return ResponseEntity.ok(Map.of("status","success","message","Logged out on this device"));
     }
 
-    /** POST /kakao/auth/logout-all : 모든 기기에서 로그아웃(멤버 전체 refresh 폐기) */
-    @Hidden
-    @PostMapping("/auth/logout-all")
-    public ResponseEntity<?> logoutAll(@CurrentMember Member member,
-                                       HttpServletResponse res) {
-        if (member == null) {
-            return ResponseEntity.status(401).body(Map.of(
-                    "status","error","message","Unauthorized"
-            ));
-        }
-        long n = tokenService.revokeAllFor(member.getId());
-        clearRefreshCookie(res);
-        return ResponseEntity.ok(Map.of(
-                "status","success",
-                "revoked", n
-        ));
+    // ==== DTO ====
+    public static class AuthCodeReq {
+        @NotBlank public String code;
+        @NotBlank public String redirectUri;
+    }
+    public static class RefreshRequest {
+        public String refreshToken;
+        public String getRefreshToken(){ return refreshToken; }
+    }
+    public static class LogoutRequest {
+        public String refreshToken;
+        public String getRefreshToken(){ return refreshToken; }
     }
 
-    /** GET /kakao/logout-url : 카카오 로그아웃 리디렉트 URL */
-    @Hidden
-    @GetMapping("/logout-url")
-    public ResponseEntity<?> logoutUrl() {
-        return ResponseEntity.ok(Map.of(
-                "logoutUrl", kakaoService.buildKakaoLogoutUrl()
-        ));
+    // ==== Helpers ====
+    private static String firstNonEmpty(String a, String b) {
+        return StringUtils.hasText(a) ? a : b;
     }
-
-    // --- Helpers -------------------------------------------------------------
-
-    private static String clientIp(HttpServletRequest req) {
-        String fwd = req.getHeader("X-Forwarded-For");
-        if (StringUtils.hasText(fwd)) return fwd.split(",")[0].trim();
-        return req.getRemoteAddr();
-    }
-
     private static String readRefreshCookie(HttpServletRequest req) {
         if (req.getCookies() == null) return null;
-        for (Cookie c : req.getCookies()) {
-            if ("refresh".equals(c.getName())) return c.getValue();
+        for (var c : req.getCookies()) if ("refresh".equals(c.getName())) return c.getValue();
+        return null;
+    }
+
+    // 쿠키 발급/삭제 유틸 (속성 동일 유지 중요)
+    static class CookieWriter {
+        static void writeRefreshCookie(HttpServletResponse res, String refresh, int maxAgeSeconds,
+                                       String domain, boolean secure, String sameSite) {
+            StringBuilder c = new StringBuilder("refresh=").append(refresh)
+                    .append("; Path=/")
+                    .append("; HttpOnly")
+                    .append("; Max-Age=").append(maxAgeSeconds);
+            if (secure) c.append("; Secure");
+            if (StringUtils.hasText(domain))   c.append("; Domain=").append(domain);
+            if (StringUtils.hasText(sameSite)) c.append("; SameSite=").append(sameSite);
+            res.addHeader("Set-Cookie", c.toString());
         }
-        return null;
-    }
-
-    private static void setRefreshCookie(HttpServletResponse res, String refresh) {
-        Cookie c = new Cookie("refresh", refresh);
-        c.setHttpOnly(true);
-        c.setPath("/");
-        c.setMaxAge(60 * 60 * 24 * 14); // 14일
-        // 운영 시 HTTPS라면: c.setSecure(true);
-        res.addCookie(c);
-    }
-
-    private static void clearRefreshCookie(HttpServletResponse res) {
-        Cookie c = new Cookie("refresh", "");
-        c.setPath("/");
-        c.setMaxAge(0);
-        res.addCookie(c);
-    }
-
-    private static String firstNonEmpty(String... vals) {
-        for (String v : vals) if (StringUtils.hasText(v)) return v;
-        return null;
+        static void clearRefreshCookie(HttpServletResponse res, String domain, boolean secure, String sameSite) {
+            StringBuilder c = new StringBuilder("refresh=")
+                    .append("; Path=/")
+                    .append("; HttpOnly")
+                    .append("; Max-Age=0");
+            if (secure) c.append("; Secure");
+            if (StringUtils.hasText(domain))   c.append("; Domain=").append(domain);
+            if (StringUtils.hasText(sameSite)) c.append("; SameSite=").append(sameSite);
+            res.addHeader("Set-Cookie", c.toString());
+        }
     }
 }

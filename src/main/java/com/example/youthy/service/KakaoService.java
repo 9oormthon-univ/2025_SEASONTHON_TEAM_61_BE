@@ -2,6 +2,7 @@
 package com.example.youthy.service;
 
 import com.example.youthy.domain.Member;
+import com.example.youthy.dto.Tokens;
 import com.example.youthy.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,105 +14,141 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
+import java.util.List;
 import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class KakaoService {
 
-    @Value("${kakao.client.id}")        private String clientId;          // REST API Key
-    @Value("${kakao.client.secret:}")   private String clientSecret;      // 콘솔에서 '사용함'이면 반드시 전송
-    @Value("${kakao.login.redirect}")   private String redirectUri;
-    @Value("${kakao.logout.redirect}")  private String logoutRedirect;
-
-    private final RestTemplate restTemplate = new RestTemplate();
     private final MemberRepository memberRepository;
     private final TokenService tokenService;
+    private final RestTemplate restTemplate = new RestTemplate();
 
-    /** 인가코드로 카카오 access_token 교환 */
-    public String getAccessToken(String code) {
-        String url = "https://kauth.kakao.com/oauth/token";
+    @Value("${kakao.client.id}")
+    private String clientId;
 
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("grant_type", "authorization_code");
-        params.add("client_id", clientId.trim());
-        params.add("redirect_uri", redirectUri.trim());
-        params.add("code", code.trim());
-        // 콘솔에서 Client Secret '사용함'이면 필수
-        if (!clientSecret.isBlank()) {
-            params.add("client_secret", clientSecret.trim());
+    @Value("${kakao.client.secret:}")
+    private String clientSecret;
+
+    /**
+     * 허용된 프론트 오리진(화이트리스트).
+     * 예: "http://localhost:3000,https://your-frontend.com"
+     */
+    @Value("#{'${kakao.allowed-redirect-origins:}'.empty ? null : '${kakao.allowed-redirect-origins:}'.split(',')}")
+    private List<String> allowedRedirectOrigins;
+
+    // ========= 1) redirectUri 화이트리스트 검사 =========
+    public void validateRedirectOrigin(String redirectUri) {
+        try {
+            URI u = URI.create(redirectUri);
+            String origin = u.getScheme() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : "");
+            if (allowedRedirectOrigins == null || allowedRedirectOrigins.isEmpty()) {
+                // 개발 편의상 통과 — 운영에서는 반드시 설정 권장
+                return;
+            }
+            boolean ok = allowedRedirectOrigins.stream()
+                    .map(String::trim)
+                    .anyMatch(o -> o.equalsIgnoreCase(origin));
+            if (!ok) throw new IllegalArgumentException("redirectUri not allowed: " + origin);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid redirectUri", e);
         }
+    }
+
+    // ========= 2) 인가코드 → 카카오 access_token 교환 =========
+    public String getAccessTokenWithRedirect(String code, String redirectUri) {
+        String tokenUrl = "https://kauth.kakao.com/oauth/token";
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "authorization_code");
+        form.add("client_id", clientId);
+        if (clientSecret != null && !clientSecret.isBlank()) {
+            form.add("client_secret", clientSecret);
+        }
+        form.add("code", code);
+        // ★ 인가요청 때 사용한 redirect_uri와 "완전히 동일"해야 함
+        form.add("redirect_uri", redirectUri);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.valueOf("application/x-www-form-urlencoded;charset=UTF-8"));
-        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
-
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         try {
-            ResponseEntity<Map<String, Object>> res = restTemplate.exchange(
-                    url, HttpMethod.POST, request, new ParameterizedTypeReference<Map<String, Object>>() {}
+            ResponseEntity<Map<String, Object>> resp = restTemplate.exchange(
+                    tokenUrl, HttpMethod.POST, new HttpEntity<>(form, headers),
+                    new ParameterizedTypeReference<>() {}
             );
-            Map<String, Object> body = res.getBody();
-            if (body == null || !body.containsKey("access_token")) {
-                throw new IllegalStateException("No access_token in response: " + body);
+            Map<String, Object> body = resp.getBody();
+            if (body == null || body.get("access_token") == null) {
+                throw new IllegalStateException("No access_token from Kakao");
             }
             return String.valueOf(body.get("access_token"));
         } catch (HttpStatusCodeException e) {
-            throw new IllegalStateException("Kakao token error: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+            throw new RuntimeException("Kakao token error: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
         }
     }
 
-    /** 카카오 사용자 정보 조회 */
-    public Map<String, Object> getUserInfo(String accessToken) {
-        String url = "https://kapi.kakao.com/v2/user/me";
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
+    // ========= 3) 카카오 유저 정보 조회 =========
+    public Map<String, Object> getUserInfo(String kakaoAccessToken) {
+        String userInfoUrl = "https://kapi.kakao.com/v2/user/me";
 
-        ResponseEntity<Map<String, Object>> res = restTemplate.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(headers),
-                new ParameterizedTypeReference<Map<String, Object>>() {}
-        );
-        return res.getBody();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(kakaoAccessToken);
+
+        try {
+            ResponseEntity<Map<String, Object>> resp = restTemplate.exchange(
+                    userInfoUrl, HttpMethod.GET, new HttpEntity<>(headers),
+                    new ParameterizedTypeReference<>() {}
+            );
+            if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                throw new IllegalStateException("Fail to get user info from Kakao");
+            }
+            return resp.getBody();
+        } catch (HttpStatusCodeException e) {
+            throw new RuntimeException("Kakao userinfo error: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        }
     }
 
-    /** kakaoId 기준 업서트 후 우리 서비스 토큰(Access/Refresh) 발급 */
-    public com.example.youthy.dto.Tokens processUser(Map<String, Object> userInfo) {
+    // ========= 4) 유저 upsert + 우리 토큰 발급 =========
+    // TokenService의 실제 메서드 시그니처에 맞춤 (rotateAndIssue / mintRefresh 사용 가능)
+    public Tokens processUser(Map<String, Object> userInfo, String userAgent, String ip) {
         Long kakaoId = Long.valueOf(String.valueOf(userInfo.get("id")));
         @SuppressWarnings("unchecked")
         Map<String, Object> kakaoAccount = (Map<String, Object>) userInfo.get("kakao_account");
         @SuppressWarnings("unchecked")
-        Map<String, Object> properties   = (Map<String, Object>) userInfo.get("properties");
+        Map<String, Object> properties = (Map<String, Object>) userInfo.get("properties");
 
         String email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
         String nickname = properties != null ? (String) properties.get("nickname") : null;
 
         Member member = memberRepository.findByKakaoId(kakaoId)
                 .map(m -> {
-                    if (nickname != null && !nickname.equals(m.getUsername())) m.setUsername(nickname);
-                    if (email != null && (m.getEmail() == null || !email.equals(m.getEmail()))) m.setEmail(email);
-                    return m;
+                    boolean dirty = false;
+                    if (nickname != null && !nickname.equals(m.getUsername())) { m.setUsername(nickname); dirty = true; }
+                    if (email != null && !email.equals(m.getEmail()))       { m.setEmail(email);       dirty = true; }
+                    return dirty ? memberRepository.save(m) : m;
                 })
-                .orElseGet(() -> Member.builder()
-                        .kakaoId(kakaoId)
-                        .email(email)
-                        .username(nickname)
-                        .build());
+                .orElseGet(() -> {
+                    Member m = new Member();
+                    m.setKakaoId(kakaoId);
+                    m.setEmail(email);
+                    m.setUsername(nickname);
+                    return memberRepository.save(m);
+                });
 
-        memberRepository.save(member);
+        // A) 회전 규칙까지 TokenService에 위임(권장)
+        var pair = tokenService.rotateAndIssue(member, null, userAgent, ip);
+        return new Tokens(pair.getAccess(), pair.getRefresh());
 
-        // Access(기본 TTL 사용) + Refresh 발급
-        String access  = tokenService.createAccess(member, 0);
-        String refresh = tokenService.mintRefresh(member, null, null); // UA/IP 필요시 Web 레이어에서 주입
-
-        return new com.example.youthy.dto.Tokens(access, refresh);
+        // B) 단순 발급 원할 경우(위 return 주석 처리하고 아래 사용)
+        // String access = tokenService.createAccess(member, 0);
+        // String refresh = tokenService.mintRefresh(member, userAgent, ip);
+        // return new Tokens(access, refresh);
     }
 
-    /** 카카오 계정 로그아웃 URL 생성(옵션) */
-    public String buildKakaoLogoutUrl() {
-        return "https://kauth.kakao.com/oauth/logout?client_id=" + clientId + "&logout_redirect_uri=" + logoutRedirect;
+    // 기존 호환 (UA/IP가 필요 없을 때)
+    public Tokens processUser(Map<String, Object> userInfo) {
+        return processUser(userInfo, null, null);
     }
-
-    // (미사용 예시) 직접 JWT 생성 메서드는 현재 TokenService 사용으로 대체됨.
-    // 필요하면 삭제해도 무방.
 }
