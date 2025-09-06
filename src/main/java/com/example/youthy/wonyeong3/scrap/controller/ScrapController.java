@@ -1,62 +1,61 @@
 package com.example.youthy.wonyeong3.scrap.controller;
 
-import com.example.youthy.config.CurrentMember;
+import com.example.youthy.config.CurrentMember; // 프로젝트에 이미 있는 경우
 import com.example.youthy.domain.Member;
-import com.example.youthy.wonyeong3.scrap.dto.ScrapItemDto;
+import com.example.youthy.wonyeong3.scrap.domain.Scrap;
 import com.example.youthy.wonyeong3.scrap.service.ScrapService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Map;
-
-@Tag(name = "Scrap", description = "회원별 정책 스크랩 API")
 @RestController
 @RequestMapping("/api/wonyeong3/scraps")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearer-key") // Swagger에서 Authorize 버튼 활성
 public class ScrapController {
 
     private final ScrapService scrapService;
 
-    @Operation(summary = "정책 스크랩 추가")
+    @Operation(summary = "정책 스크랩 추가 (회원별)")
     @PostMapping("/{policyNo}")
-    public ResponseEntity<Void> add(
-            @CurrentMember Member member,
-            @PathVariable String policyNo
-    ) {
-        scrapService.add(member, policyNo);
-        return ResponseEntity.noContent().build();
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void add(@CurrentMember Member member, @PathVariable String policyNo) {
+        try {
+            scrapService.add(member, policyNo);
+        } catch (IllegalStateException e) {
+            if ("ALREADY_SCRAPPED".equals(e.getMessage())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 스크랩한 정책입니다.");
+            }
+            throw e;
+        }
     }
 
-    @Operation(summary = "정책 스크랩 해제")
-    @DeleteMapping("/{policyNo}")
-    public ResponseEntity<Void> remove(
-            @CurrentMember Member member,
-            @PathVariable String policyNo
-    ) {
-        scrapService.remove(member, policyNo);
-        return ResponseEntity.noContent().build();
-    }
-
-    @Operation(summary = "내 스크랩 목록 조회 (최신순)")
+    @Operation(summary = "스크랩 목록 조회 (회원별)")
     @GetMapping
-    public ResponseEntity<Page<ScrapItemDto>> list(
+    public Page<Scrap> list(
             @CurrentMember Member member,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Positive int size
     ) {
-        return ResponseEntity.ok(scrapService.list(member, page, size));
+        return scrapService.list(member, page, size);
     }
 
-    @Operation(summary = "내 스크랩 총 개수")
+    @Operation(summary = "스크랩 개수 조회 (회원별)")
     @GetMapping("/count")
-    public ResponseEntity<Map<String, Object>> count(
-            @CurrentMember Member member
-    ) {
-        long count = scrapService.count(member);
-        return ResponseEntity.ok(Map.of("count", count));
+    public long count(@CurrentMember Member member) {
+        return scrapService.count(member);
+    }
+
+    @Operation(summary = "스크랩 삭제 (회원별)")
+    @DeleteMapping("/{policyNo}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void remove(@CurrentMember Member member, @PathVariable String policyNo) {
+        scrapService.remove(member, policyNo);
     }
 }

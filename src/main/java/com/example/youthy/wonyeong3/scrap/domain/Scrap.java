@@ -1,35 +1,35 @@
 package com.example.youthy.wonyeong3.scrap.domain;
 
-import com.example.youthy.YouthPolicy;
 import com.example.youthy.domain.Member;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "scrap",
-        uniqueConstraints = @UniqueConstraint(name = "uk_scrap_member_policy",
-                columnNames = {"member_id","policy_no"}))
+@Table(
+        name = "scrap",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_scrap_member_policy", columnNames = {"member_id", "policy_no"})
+        },
+        indexes = {
+                @Index(name = "idx_scrap_member", columnList = "member_id")
+        }
+)
 @Getter @Setter
-@NoArgsConstructor @AllArgsConstructor @Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Scrap {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id; // surrogate PK
+    private Long id;
+
+    @Column(name = "policy_no", nullable = false, length = 64)
+    private String policyNo;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "member_id", nullable = false)
+    @JoinColumn(name = "member_id", nullable = false,
+            foreignKey = @ForeignKey(name = "fk_scrap_member"))
     private Member member;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "policy_no", nullable = false) // YouthPolicy의 PK(정책번호)에 FK
-    private YouthPolicy policy;
-
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
-
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) createdAt = LocalDateTime.now();
-    }
+    // 선택 필드가 있다면 여기에 추가 (title, memo 등)
 }
