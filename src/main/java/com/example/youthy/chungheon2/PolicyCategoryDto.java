@@ -24,44 +24,33 @@ public class PolicyCategoryDto {
         this.policyNo = entity.getPolicyNo();
         this.policyName = entity.getPolicyName();
         this.category = entity.getPolicyField();
-        this.dDay = calculateDday(entity.getApplicationPeriod());
+        this.dDay = calculateDday(entity.getApplicationEndDate());
         this.policySummary = entity.getPolicySummary();
     }
 
     /**
      * 신청 기간 문자열을 바탕으로 D-Day를 계산하는 헬퍼 메서드
-     * @param applicationPeriod "20250601 ~ 20251130", "상시" 등의 문자열
      * @return "D-7", "D-Day", "마감", "상시" 등의 D-Day 정보
      */
-    private String calculateDday(String applicationPeriod) {
-        if (!StringUtils.hasText(applicationPeriod) || applicationPeriod.contains("상시")) {
+    private String calculateDday(LocalDate endDate) {
+        // DB에 기본값으로 저장된 아주 먼 미래의 날짜를 정의합니다.
+        final LocalDate FAR_FUTURE_DATE = LocalDate.of(9999, 12, 31);
+
+        // 1. 종료일이 없거나(null), 아주 먼 미래의 날짜(기본값)이면 "상시"로 표시합니다.
+        if (endDate == null || endDate.equals(FAR_FUTURE_DATE)) {
             return "상시";
         }
 
-        String endDateStr = applicationPeriod.trim();
+        // 2. 유효한 종료일을 기준으로 D-Day를 정확하게 계산합니다.
+        LocalDate today = LocalDate.now();
+        long daysLeft = ChronoUnit.DAYS.between(today, endDate);
 
-        if (endDateStr.contains("~")) {
-            endDateStr = endDateStr.split("~")[1].trim();
-        }
-
-        if (!StringUtils.hasText(endDateStr)) {
-            return "정보 확인 필요";
-        }
-
-        try {
-            LocalDate endDate = LocalDate.parse(endDateStr, DateTimeFormatter.ofPattern("yyyyMMdd"));
-            LocalDate today = LocalDate.now();
-            long daysLeft = ChronoUnit.DAYS.between(today, endDate);
-
-            if (daysLeft < 0) {
-                return "마감";
-            } else if (daysLeft == 0) {
-                return "D-Day";
-            } else {
-                return "D-" + daysLeft;
-            }
-        } catch (Exception e) {
-            return "정보 확인 필요"; // 날짜 형식 파싱 실패 시
+        if (daysLeft < 0) {
+            return "마감";
+        } else if (daysLeft == 0) {
+            return "D-Day";
+        } else {
+            return "D-" + daysLeft;
         }
     }
 }

@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.StringJoiner;
 
@@ -84,15 +86,18 @@ public class ExternalPolicyDto {
          * @return YouthPolicy 엔티티
          */
         public YouthPolicy toEntity() {
+            DateRange parsedDates = parseApplicationPeriod(this.aplyYmd);
             // 1. 먼저 residence를 제외한 기본 YouthPolicy 객체를 생성합니다.
             YouthPolicy policy = YouthPolicy.builder()
                     .policyNo(this.plcyNo)
                     .policyName(this.plcyNm)
                     .policySummary(this.plcyExplnCn)
-                    .policyField(mapToYouthyCategory(this.mclsfNm)) // ✅ 카테고리 매핑 메서드 호출
+                    .policyField(mapToYouthyCategory(this.mclsfNm))
                     .supportContent(this.plcySprtCn)
                     .operationPeriod(combineFields(this.bizPrdBgngYmd, this.bizPrdEndYmd, " ~ "))
                     .applicationPeriod(this.aplyYmd)
+                    .applicationStartDate(parsedDates.getStartDate() != null ? parsedDates.getStartDate() : LocalDate.of(1900, 1, 1))
+                    .applicationEndDate(parsedDates.getEndDate() != null ? parsedDates.getEndDate() : LocalDate.of(9999, 12, 31))
                     .supportScale(this.sprtSclCnt)
                     .minAge(this.sprtTrgtMinAge)
                     .maxAge(this.sprtTrgtMaxAge)
@@ -121,6 +126,41 @@ public class ExternalPolicyDto {
 
             // 3. 모든 정보가 채워진 policy 객체를 반환합니다.
             return policy;
+        }
+        @Getter
+        private static class DateRange {
+            private final LocalDate startDate;
+            private final LocalDate endDate;
+
+            DateRange(LocalDate startDate, LocalDate endDate) {
+                this.startDate = startDate;
+                this.endDate = endDate;
+            }
+        }
+
+        private DateRange parseApplicationPeriod(String periodStr) {
+            if (!StringUtils.hasText(periodStr) || periodStr.contains("상시")) {
+                return new DateRange(null, null);
+            }
+
+            try {
+                String targetLine = periodStr.trim();
+                if (targetLine.contains("\n")) {
+                    String[] lines = targetLine.replace("\\N", "\n").split("\n");
+                    targetLine = lines[lines.length - 1].trim();
+                }
+
+                if (targetLine.contains("~")) {
+                    String[] dates = targetLine.split("~");
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+                    LocalDate startDate = LocalDate.parse(dates[0].trim(), formatter);
+                    LocalDate endDate = dates.length > 1 ? LocalDate.parse(dates[1].trim(), formatter) : null;
+                    return new DateRange(startDate, endDate);
+                }
+            } catch (Exception e) {
+                // 파싱 실패 시 날짜를 null로 처리
+            }
+            return new DateRange(null, null);
         }
 
         /**

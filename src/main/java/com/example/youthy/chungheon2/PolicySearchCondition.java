@@ -22,6 +22,12 @@ public class PolicySearchCondition {
      */
     private String keyword;
 
+    /**
+     * 정렬 옵션 (latest: 최신순, soon: 마감순)
+     * 기본값은 최신순으로 처리됩니다.
+     */
+    private String sort = "latest";
+
     // 필요에 따라 다른 검색 조건(지역, 연령 등)을 여기에 추가할 수 있습니다.
 }
 

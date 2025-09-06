@@ -5,7 +5,9 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -38,6 +40,14 @@ public class YouthPolicy {
 
     @Column(name = "application_period", length = 500)
     private String applicationPeriod; // 사업 신청 기간 (aplyYmd)
+
+    @Column(name = "application_start_date")
+    @ColumnDefault("'1900-01-01'") // 기본값 설정 (오래된 날짜)
+    private LocalDate applicationStartDate; // 신청 시작일
+
+    @Column(name = "application_end_date")
+    @ColumnDefault("'9999-12-31'") // 기본값 설정 (아주 먼 미래)
+    private LocalDate applicationEndDate; // 신청 종료일
 
     @Column(name = "support_scale")
     private String supportScale; // 지원 규모(명) (sprtSclCnt)
@@ -89,7 +99,7 @@ public class YouthPolicy {
     private int viewCount = 0; // 조회수 (Youthy 서비스 자체 관리)
 
     @Builder
-    public YouthPolicy(String policyNo, String policyName, String policySummary, String policyField, String supportContent, String operationPeriod, String applicationPeriod, String supportScale, Integer minAge, Integer maxAge, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
+    public YouthPolicy(String policyNo, String policyName, String policySummary, String policyField, String supportContent, String operationPeriod, String applicationPeriod, LocalDate applicationStartDate, LocalDate applicationEndDate,String supportScale, Integer minAge, Integer maxAge, String incomeCondition, String educationRequirement, String majorRequirement, String employmentStatus, String specializedField, String additionalInfo, String participationRestriction, String applicationProcess, String evaluationAndAnnouncement, String applicationSite, String requiredDocuments) {
         this.policyNo = policyNo;
         this.policyName = policyName;
         this.policySummary = policySummary;
@@ -97,6 +107,8 @@ public class YouthPolicy {
         this.supportContent = supportContent;
         this.operationPeriod = operationPeriod;
         this.applicationPeriod = applicationPeriod;
+        this.applicationStartDate = applicationStartDate;
+        this.applicationEndDate = applicationEndDate;
         this.supportScale = supportScale;
         this.minAge = minAge;
         this.maxAge = maxAge;

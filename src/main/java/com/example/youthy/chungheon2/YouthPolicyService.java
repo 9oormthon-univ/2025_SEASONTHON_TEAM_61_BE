@@ -3,7 +3,6 @@ package com.example.youthy.chungheon2;
 import com.example.youthy.YouthPolicy;
 import com.example.youthy.YouthPolicyRepository;
 import lombok.RequiredArgsConstructor;
-import org.hibernate.service.spi.ServiceException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
