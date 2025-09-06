@@ -6,7 +6,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
-import org.springframework.web.servlet.config.annotation.*;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.List;
 
@@ -16,13 +16,14 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${jwt.secret}")
     private String jwtSecret;
 
-    // ✅ 필터를 여기서만 등록 (이름 충돌 방지용 Bean name 부여)
-    @Bean(name = "jwtAuthFilterRegistration")
-    public FilterRegistrationBean<JwtAuthFilter> jwtAuthFilter(MemberRepository memberRepository) {
-        var bean = new FilterRegistrationBean<>(new JwtAuthFilter(jwtSecret, memberRepository));
-        bean.setName("jwtAuthFilter");  // 서블릿 필터 이름
-        bean.addUrlPatterns("/api/*");  // /api/** 만 보호
-        bean.setOrder(1);               // 실행 순서
+    // ✅ JwtAuthFilter를 서블릿 필터 체인에 등록
+    @Bean
+    public FilterRegistrationBean<JwtAuthFilter> jwtAuthFilterRegistration(MemberRepository memberRepository) {
+        FilterRegistrationBean<JwtAuthFilter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(new JwtAuthFilter(jwtSecret, memberRepository));
+        bean.addUrlPatterns("/api/*");   // ← 꼭 /api/* 로
+        bean.setOrder(1);
+        bean.setName("jwtAuthFilter");
         return bean;
     }
 
@@ -30,17 +31,5 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(new CurrentMemberArgumentResolver());
-    }
-
-    // (선택) CORS
-    @Override
-    public void addCorsMappings(CorsRegistry r) {
-        r.addMapping("/**")
-                .allowedOrigins("http://localhost:3000")
-                .allowedMethods("GET","POST","PUT","DELETE","OPTIONS")
-                .allowedHeaders("*")
-                .exposedHeaders("Authorization")
-                .allowCredentials(true)
-                .maxAge(3600);
     }
 }
