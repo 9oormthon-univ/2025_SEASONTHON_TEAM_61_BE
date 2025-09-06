@@ -2,10 +2,10 @@ package com.example.youthy.wonyeong.service;
 
 import com.example.youthy.domain.Member;
 import com.example.youthy.repository.MemberRepository;
-import com.example.youthy.wonyeong.domain.WonyeongMemberProfile;
-import com.example.youthy.wonyeong.dto.WonyeongMemberProfileRequest;
-import com.example.youthy.wonyeong.dto.WonyeongMemberProfileResponse;
-import com.example.youthy.wonyeong.repository.WonyeongMemberProfileRepository;
+import com.example.youthy.wonyeong.domain.MemberProfile;
+import com.example.youthy.wonyeong.dto.MemberProfileRequest;
+import com.example.youthy.wonyeong.dto.MemberProfileResponse;
+import com.example.youthy.wonyeong.repository.MemberProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,27 +14,27 @@ import java.util.HashSet;
 
 @Service
 @RequiredArgsConstructor
-public class WonyeongMemberProfileService {
+public class MemberProfileService {
 
     private final MemberRepository memberRepository; // 루트 Member 재사용
-    private final WonyeongMemberProfileRepository profileRepository;
+    private final MemberProfileRepository profileRepository;
 
     /** memberId 또는 kakaoId 로 Member를 찾아 프로필을 생성/업데이트 */
     @Transactional
-    public WonyeongMemberProfileResponse upsertProfile(WonyeongMemberProfileRequest req) {
+    public MemberProfileResponse upsertProfile(MemberProfileRequest req) {
         Member member = findMember(req);
 
-        WonyeongMemberProfile profile = profileRepository.findByMember_Id(member.getId())
-                .orElse(WonyeongMemberProfile.builder().member(member).build());
+        MemberProfile profile = profileRepository.findByMember_Id(member.getId())
+                .orElse(MemberProfile.builder().member(member).build());
 
         profile.setAgeGroup(req.ageGroup());
         profile.setInterestedCategories(
                 req.categories() == null ? new HashSet<>() : new HashSet<>(req.categories())
         );
 
-        WonyeongMemberProfile saved = profileRepository.save(profile);
+        MemberProfile saved = profileRepository.save(profile);
 
-        return new WonyeongMemberProfileResponse(
+        return new MemberProfileResponse(
                 saved.getId(),
                 member.getId(),
                 saved.getAgeGroup(),
@@ -42,7 +42,7 @@ public class WonyeongMemberProfileService {
         );
     }
 
-    private Member findMember(WonyeongMemberProfileRequest req) {
+    private Member findMember(MemberProfileRequest req) {
         if (req.memberId() != null) {
             return memberRepository.findById(req.memberId())
                     .orElseThrow(() -> new IllegalArgumentException("Member not found: id=" + req.memberId()));

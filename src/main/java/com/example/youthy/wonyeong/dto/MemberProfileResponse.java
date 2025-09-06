@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Set;
 
 @Schema(description = "wonyeong 회원 프로필 응답 DTO")
-public record WonyeongMemberProfileResponse(
+public record MemberProfileResponse(
 
         @Schema(description = "프로필 PK", example = "10")
         Long profileId,

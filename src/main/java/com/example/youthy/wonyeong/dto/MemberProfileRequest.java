@@ -8,7 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 @Schema(description = "wonyeong 회원 프로필 저장 요청 DTO")
-public record WonyeongMemberProfileRequest(
+public record MemberProfileRequest(
 
         @Schema(description = "기존 Member ID (memberId 또는 kakaoId 중 하나 필수)", example = "1")
         Long memberId,

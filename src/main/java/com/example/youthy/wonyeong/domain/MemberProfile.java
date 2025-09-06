@@ -9,14 +9,14 @@ import java.util.Set;
 
 @Entity
 @Table(
-        name = "wonyeong_member_profile",
+        name = "member_profile",
         uniqueConstraints = @UniqueConstraint(name = "uk_profile_member", columnNames = "member_id")
 )
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class WonyeongMemberProfile {
+public class MemberProfile {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

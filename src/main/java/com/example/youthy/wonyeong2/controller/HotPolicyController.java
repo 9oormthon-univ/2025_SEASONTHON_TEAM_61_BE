@@ -5,18 +5,16 @@ import com.example.youthy.wonyeong2.service.HotPolicyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "Wonyeong2-Hot", description = "viewCount 기반 인기 정책(시간 캐시) API")
+@Tag(name = "Hot", description = "viewCount 기반 인기 정책(시간 캐시) API")
 @RestController
-@RequestMapping("/api/wonyeong2/policies")
+@RequestMapping("/api/v1/policies")
 @RequiredArgsConstructor
 public class HotPolicyController {
 
