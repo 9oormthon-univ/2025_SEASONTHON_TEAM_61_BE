@@ -27,8 +27,7 @@ public class YouthPolicy {
     @Column(name = "policy_field")
     private String policyField; // 정책분야 (lclsfNm, mclsfNm)
 
-    @Lob
-    @Column(name = "support_content")
+    @Column(name = "support_content", columnDefinition = "TEXT")
     private String supportContent; // 지원내용 (plcySprtCn)
 
     @Column(name = "operation_period", length = 500)
@@ -49,8 +48,7 @@ public class YouthPolicy {
     @OneToMany(mappedBy = "youthPolicy", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<PolicyResidence> residences = new HashSet<>();
 
-    @Lob
-    @Column(name = "income_condition")
+    @Column(name = "income_condition",columnDefinition = "TEXT")
     private String incomeCondition; // 소득 조건 (earnMinAmt, earnMaxAmt 등)
 
     @Column(name = "education_requirement")
@@ -65,27 +63,22 @@ public class YouthPolicy {
     @Column(name = "specialized_field")
     private String specializedField; // 특화분야 (sBizCd)
 
-    @Lob
-    @Column(name = "additional_info")
+    @Column(name = "additional_info",columnDefinition = "TEXT")
     private String additionalInfo; // 추가사항 (etcMttrCn)
 
-    @Lob
-    @Column(name = "participation_restriction")
+    @Column(name = "participation_restriction",columnDefinition = "TEXT")
     private String participationRestriction; // 참여제한 대상 (ptcpPrpTrgtCn)
 
-    @Lob
-    @Column(name = "application_process")
+    @Column(name = "application_process",columnDefinition = "TEXT")
     private String applicationProcess; // 신청절차 (plcyAplyMthdCn)
 
-    @Lob
-    @Column(name = "evaluation_announcement")
+    @Column(name = "evaluation_announcement",columnDefinition = "TEXT")
     private String evaluationAndAnnouncement; // 심사 및 발표 (srngMthdCn)
 
     @Column(name = "application_site", length = 1000)
     private String applicationSite; // 신청 사이트 (aplyUrlAddr)
 
-    @Lob
-    @Column(name = "required_documents")
+    @Column(name = "required_documents",columnDefinition = "TEXT")
     private String requiredDocuments; // 제출 서류 (sbmsnDcmntCn)
   
     // **조회수 필드 추가**

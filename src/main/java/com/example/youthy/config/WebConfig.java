@@ -1,68 +1,24 @@
 package com.example.youthy.config;
 
-import com.example.youthy.repository.MemberRepository;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
-import java.util.List;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    // ===== CORS 설정(yml) =====
-    @Value("${app.cors.allowed-origins:*}")
-    private String allowedOriginsCsv;
-    @Value("${app.cors.allowed-methods:GET,POST,PUT,DELETE,OPTIONS,PATCH}")
-    private String allowedMethodsCsv;
-    @Value("${app.cors.allowed-headers:*}")
-    private String allowedHeadersCsv;
-    @Value("${app.cors.exposed-headers:Authorization}")
-    private String exposedHeadersCsv;
-    @Value("${app.cors.allow-credentials:true}")
-    private boolean allowCredentials;
-    @Value("${app.cors.max-age-seconds:3600}")
-    private long maxAgeSeconds;
+    // application.yml에 정의된 값을 주입받습니다.
+    @Value("${app.cors.allowed-origins}")
+    private String allowedOrigins;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
-                .allowedOrigins(split(allowedOriginsCsv))
-                .allowedMethods(split(allowedMethodsCsv))
-                .allowedHeaders(split(allowedHeadersCsv))
-                .exposedHeaders(split(exposedHeadersCsv))
-                .allowCredentials(allowCredentials)
-                .maxAge(maxAgeSeconds);
-    }
-
-    private static String[] split(String csv) {
-        if (csv == null || csv.isBlank()) return new String[0];
-        String[] arr = csv.split(",");
-        for (int i = 0; i < arr.length; i++) arr[i] = arr[i].trim();
-        return arr;
-    }
-
-    // ===== @CurrentMember 리졸버 등록 =====
-    @Override
-    public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
-        resolvers.add(new CurrentMemberArgumentResolver());
-    }
-
-    // ===== JwtAuthFilter 등록(SecurityConfig 없이 동작) =====
-    @Value("${jwt.secret}")
-    private String jwtSecret;
-
-    @Bean
-    public FilterRegistrationBean<JwtAuthFilter> jwtAuthFilterRegistration(MemberRepository memberRepository) {
-        FilterRegistrationBean<JwtAuthFilter> bean = new FilterRegistrationBean<>();
-        bean.setFilter(new JwtAuthFilter(jwtSecret, memberRepository));
-        bean.addUrlPatterns("/api/*");   // /api/** 만 보호 (Swagger, Kakao 등은 무관)
-        bean.setOrder(1);
-        bean.setName("jwtAuthFilter");
-        return bean;
+        registry.addMapping("/**") // 1. 모든 경로에 대해 CORS 정책을 적용합니다.
+                .allowedOrigins(allowedOrigins.split(",")) // 2. yml 파일에서 주입받은, 허용할 출처(프론트엔드 주소)를 설정합니다.
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // 3. 허용할 HTTP 메서드를 지정합니다.
+                .allowedHeaders("*") // 4. 허용할 HTTP 헤더를 지정합니다.
+                .allowCredentials(true) // 5. 쿠키 등 자격 증명 정보를 허용합니다.
+                .maxAge(3600); // 6. Pre-flight 요청의 캐시 시간을 설정합니다. (초 단위)
     }
 }

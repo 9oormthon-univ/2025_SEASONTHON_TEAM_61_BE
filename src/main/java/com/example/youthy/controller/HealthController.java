@@ -1,4 +1,3 @@
-// src/main/java/com/example/youthy/controller/HealthController.java
 package com.example.youthy.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
