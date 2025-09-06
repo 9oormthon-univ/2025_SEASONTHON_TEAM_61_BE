@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/api/wonyeong3/scraps")
+@RequestMapping("/api/scraps")
 @RequiredArgsConstructor
 @SecurityRequirement(name = "bearer-key") // Swagger에서 Authorize 버튼 활성
 public class ScrapController {
