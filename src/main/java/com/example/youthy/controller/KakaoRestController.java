@@ -3,9 +3,10 @@ package com.example.youthy.controller;
 
 import com.example.youthy.dto.Tokens; // DTO (com.example.youthy.dto.Tokens)
 import com.example.youthy.service.KakaoService;
-import com.example.youthy.service.TokenService; // service.TokenService.Tokens (내부 record 반환 주의)
+import com.example.youthy.service.TokenService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotBlank;
@@ -56,8 +57,7 @@ public class KakaoRestController {
         String ua = firstNonEmpty(httpReq.getHeader("User-Agent"), "unknown");
         String ip = firstNonEmpty(httpReq.getHeader("X-Forwarded-For"), httpReq.getRemoteAddr());
 
-        // KakaoService 내부에서 service.TokenService.Tokens가 아닌 DTO Tokens를 반환하도록 구현했거나,
-        // 아래처럼 DTO로 감싸서 사용합니다.
+        // KakaoService는 반드시 dto.Tokens를 반환해야 함
         Tokens tokens = kakaoService.processUser(userInfo, ua, ip);
 
         // 5) Refresh = HttpOnly 쿠키(운영 속성), Access = JSON
@@ -87,9 +87,8 @@ public class KakaoRestController {
         String ua = firstNonEmpty(req.getHeader("User-Agent"), "unknown");
         String ip = firstNonEmpty(req.getHeader("X-Forwarded-For"), req.getRemoteAddr());
 
-        // service.TokenService.Tokens -> DTO Tokens 변환
-        var pair = tokenService.refresh(provided, ua, ip); // 반환 타입: com.example.youthy.service.TokenService.Tokens
-        Tokens tokens = new Tokens(pair.getAccess(), pair.getRefresh());
+        // TokenService는 dto.Tokens를 직접 반환해야 함
+        Tokens tokens = tokenService.refresh(provided, ua, ip);
 
         // 회전된 새 refresh를 운영 속성으로 재발급
         CookieWriter.writeRefreshCookie(res, tokens.getRefresh(), REFRESH_MAX_AGE, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE);
@@ -136,8 +135,11 @@ public class KakaoRestController {
         return StringUtils.hasText(a) ? a : b;
     }
     private static String readRefreshCookie(HttpServletRequest req) {
-        if (req.getCookies() == null) return null;
-        for (var c : req.getCookies()) if ("refresh".equals(c.getName())) return c.getValue();
+        Cookie[] cookies = req.getCookies();
+        if (cookies == null) return null;
+        for (Cookie c : cookies) {
+            if ("refresh".equals(c.getName())) return c.getValue();
+        }
         return null;
     }
 
