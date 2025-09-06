@@ -53,6 +53,7 @@ public class ExternalPolicyDto {
         // --- API 응답 필드 ---
         private String plcyNo;              // 정책번호
         private String plcyNm;              // 정책명
+        private String plcyExplnCn;         // 정책설명내용
         private String lclsfNm;             // 정책대분류명
         private String mclsfNm;             // 정책중분류명
         private String plcySprtCn;          // 정책지원내용
@@ -87,6 +88,7 @@ public class ExternalPolicyDto {
             YouthPolicy policy = YouthPolicy.builder()
                     .policyNo(this.plcyNo)
                     .policyName(this.plcyNm)
+                    .policySummary(this.plcyExplnCn)
                     .policyField(mapToYouthyCategory(this.mclsfNm)) // ✅ 카테고리 매핑 메서드 호출
                     .supportContent(this.plcySprtCn)
                     .operationPeriod(combineFields(this.bizPrdBgngYmd, this.bizPrdEndYmd, " ~ "))

@@ -18,12 +18,14 @@ public class PolicyCategoryDto {
     private final String policyName;    // 정책이름
     private final String category;      // 카테고리 (정책분야)
     private final String dDay;          // D-Day 정보
+    private final String policySummary;
 
     public PolicyCategoryDto(YouthPolicy entity) {
         this.policyNo = entity.getPolicyNo();
         this.policyName = entity.getPolicyName();
         this.category = entity.getPolicyField();
         this.dDay = calculateDday(entity.getApplicationPeriod());
+        this.policySummary = entity.getPolicySummary();
     }
 
     /**
