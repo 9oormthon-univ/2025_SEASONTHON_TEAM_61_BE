@@ -7,10 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -56,5 +53,16 @@ public class YouthPolicyController {
         // 기본값 및 "최신순": applicationStartDate(시작일) 기준 오름차순 정렬 (시작일이 오래된 순)
         // 시작일이 없는(null) 데이터는 가장 마지막에 표시됩니다.
         return Sort.by(Sort.Direction.DESC, "applicationStartDate");
+    }
+
+    /**
+     * 정책 번호(ID)로 특정 정책의 상세 정보를 조회합니다.
+     * @param policyNo 조회할 정책의 고유 번호
+     * @return 정책 상세 정보
+     */
+    @GetMapping("/{policyNo}")
+    public ResponseEntity<PolicyDetailDto> getPolicyDetail(@PathVariable String policyNo) {
+        PolicyDetailDto result = youthPolicyService.getPolicyDetail(policyNo);
+        return ResponseEntity.ok(result);
     }
 }

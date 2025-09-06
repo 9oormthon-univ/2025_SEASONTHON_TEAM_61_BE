@@ -3,6 +3,7 @@ package com.example.youthy.chungheon2;
 import com.example.youthy.YouthPolicy;
 import com.example.youthy.YouthPolicyRepository;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.service.spi.ServiceException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -31,5 +32,18 @@ public class YouthPolicyService {
 
         // Page<YouthPolicy>를 Page<PolicyCategoryDto>로 변환하여 반환
         return entities.map(PolicyCategoryDto::new);
+    }
+
+    /**
+     * 정책 번호(ID)로 특정 정책의 상세 정보를 조회합니다.
+     * @param policyNo 조회할 정책의 고유 번호
+     * @return 정책 상세 정보 DTO
+     */
+    @Transactional
+    public PolicyDetailDto getPolicyDetail(String policyNo) {
+        YouthPolicy policy = youthPolicyRepository.findById(policyNo)
+                .orElseThrow(() -> new ServiceException("Policy not found with ID: " + policyNo));
+        policy.increaseViewCount();
+        return new PolicyDetailDto(policy);
     }
 }

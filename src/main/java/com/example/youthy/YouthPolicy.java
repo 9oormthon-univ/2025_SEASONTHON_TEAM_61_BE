@@ -129,4 +129,7 @@ public class YouthPolicy {
         PolicyResidence residence = new PolicyResidence(this, zipCode);
         this.residences.add(residence);
     }
+    public void increaseViewCount(){
+        viewCount++;
+    }
 }
