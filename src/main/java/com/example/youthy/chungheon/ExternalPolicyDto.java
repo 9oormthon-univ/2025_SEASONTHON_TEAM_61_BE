@@ -47,7 +47,7 @@ public class ExternalPolicyDto {
     @Getter
     @Setter
     @NoArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true) // API 응답에 모르는 필드가 있어도 무시하고 파싱합니다.
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class YouthPolicyItem {
 
         // --- API 응답 필드 ---
@@ -87,7 +87,7 @@ public class ExternalPolicyDto {
             YouthPolicy policy = YouthPolicy.builder()
                     .policyNo(this.plcyNo)
                     .policyName(this.plcyNm)
-                    .policyField(combineFields(this.lclsfNm, this.mclsfNm, " / "))
+                    .policyField(mapToYouthyCategory(this.mclsfNm)) // ✅ 카테고리 매핑 메서드 호출
                     .supportContent(this.plcySprtCn)
                     .operationPeriod(combineFields(this.bizPrdBgngYmd, this.bizPrdEndYmd, " ~ "))
                     .applicationPeriod(this.aplyYmd)
@@ -121,11 +121,50 @@ public class ExternalPolicyDto {
             return policy;
         }
 
+        /**
+         * 정책중분류명(mclsfNm)을 서비스 자체 카테고리("Youthy 카테고리")로 매핑합니다.
+         * @param mclsfNm 외부 API의 정책중분류명
+         * @return Youthy 카테고리명
+         */
+        private String mapToYouthyCategory(String mclsfNm) {
+            if (!StringUtils.hasText(mclsfNm)) {
+                return this.lclsfNm; // 중분류가 없으면 대분류를 그대로 사용
+            }
+            switch (mclsfNm) {
+                case "취업":
+                case "재직자":
+                    return "취업";
+                case "창업":
+                    return "창업";
+                case "주택 및 거주지":
+                case "기숙사":
+                case "전월세 및 주거급여 지원":
+                    return "주거";
+                case "미래역량강화":
+                case "교육비지원":
+                case "교육":
+                    return "교육";
+                case "취약계층 및 금융지원":
+                case "건강":
+                    return "복지";
+                case "예술인지원":
+                case "문화활동":
+                    return "문화예술";
+                case "청년참여":
+                case "정책인프라구축":
+                case "청년국제교류":
+                case "권익보호":
+                    return "참여권리";
+                default:
+                    return this.lclsfNm; // 매핑되는 카테고리가 없으면 대분류를 사용
+            }
+        }
+
         // Helper 메서드: 여러 필드를 하나의 문자열로 조합
         private String combineFields(String field1, String field2, String delimiter) {
             StringJoiner joiner = new StringJoiner(delimiter);
-            if (StringUtils.hasText(field1)) joiner.add(field1);
-            if (StringUtils.hasText(field2)) joiner.add(field2);
+            if (StringUtils.hasText(field1)) joiner.add(field1.trim());
+            if (StringUtils.hasText(field2)) joiner.add(field2.trim());
             return joiner.toString();
         }
 
@@ -137,7 +176,9 @@ public class ExternalPolicyDto {
                 joiner.add("소득범위: 제한없음");
             }
             else if(StringUtils.hasText(this.earnMinAmt) || StringUtils.hasText(this.earnMaxAmt)) {
-                String range = String.format("소득범위: %s원 ~ %s원", this.earnMinAmt, this.earnMaxAmt);
+                String range = String.format("소득범위: %s원 ~ %s원",
+                        StringUtils.hasText(this.earnMinAmt) ? this.earnMinAmt : "제한없음",
+                        StringUtils.hasText(this.earnMaxAmt) ? this.earnMaxAmt : "제한없음");
                 joiner.add(range);
             }
             if(StringUtils.hasText(this.earnEtcCn)){
@@ -147,4 +188,3 @@ public class ExternalPolicyDto {
         }
     }
 }
-

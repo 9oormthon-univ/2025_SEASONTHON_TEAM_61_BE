@@ -35,5 +35,13 @@ public interface YouthPolicyRepository extends JpaRepository<YouthPolicy, String
     // JpaSpecificationExecutor를 상속받았기 때문에, 개발자 B는 서비스 계층에서
     // 다양한 검색 조건(거주지역, 학력, 전공 등)을 조합한 동적 쿼리를 Specification으로 생성하여 사용할 수 있습니다.
     // 이는 수십 개의 findBy... 메서드를 만드는 것보다 훨씬 유연하고 효율적입니다.
+
+    /**
+     * 정책 분야(policyField)를 기준으로 정책 목록을 페이징하여 조회합니다.
+     * @param policyField 검색할 정책 분야 (예: "일자리", "복지문화")
+     * @param pageable 페이징 정보 (page, size)
+     * @return 페이징된 정책 엔티티 목록
+     */
+    Page<YouthPolicy> findByPolicyField(String policyField, Pageable pageable);
 }
 

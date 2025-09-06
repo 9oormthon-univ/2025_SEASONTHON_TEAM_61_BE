@@ -52,7 +52,7 @@ public class PolicyUpdateService {
             log.info("Saved {} policies from page {}.", policiesToSave.size(), pageNum);
 
             pageNum++;
-            break;
+            if(pageNum==10)break;
         }
         log.info("Finished updating policies. Total {} policies updated.", totalUpdatedCount);
     }
@@ -92,4 +92,5 @@ public class PolicyUpdateService {
             return true; // 날짜 형식이 이상할 경우, 일단 유효한 것으로 간주하여 DB에 저장 (추후 확인 필요)
         }
     }
+
 }
