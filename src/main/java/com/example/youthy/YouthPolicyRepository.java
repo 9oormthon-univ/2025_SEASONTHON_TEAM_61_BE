@@ -43,5 +43,6 @@ public interface YouthPolicyRepository extends JpaRepository<YouthPolicy, String
      * @return 페이징된 정책 엔티티 목록
      */
     Page<YouthPolicy> findByPolicyField(String policyField, Pageable pageable);
+
 }
 

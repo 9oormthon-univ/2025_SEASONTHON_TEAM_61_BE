@@ -29,5 +29,17 @@ public class YouthPolicyService {
         // Page<YouthPolicy>를 Page<PolicyCategoryDto>로 변환하여 반환
         return entities.map(PolicyCategoryDto::new);
     }
+    /**
+     * 모든 정책 목록을 페이징하여 조회합니다.
+     * @param pageable 페이징 정보
+     * @return 페이징된 전체 정책 DTO 목록
+     */
+    public Page<PolicyCategoryDto> findAllPolicies(Pageable pageable) {
+        // JpaRepository의 기본 findAll 메서드를 사용합니다.
+        Page<YouthPolicy> entities = youthPolicyRepository.findAll(pageable);
+
+        // Page<YouthPolicy>를 Page<PolicyCategoryDto>로 변환하여 반환
+        return entities.map(PolicyCategoryDto::new);
+    }
 }
 
