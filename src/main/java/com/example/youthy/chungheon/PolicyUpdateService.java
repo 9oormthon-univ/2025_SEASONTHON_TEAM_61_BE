@@ -2,6 +2,8 @@ package com.example.youthy.chungheon;
 
 import com.example.youthy.YouthPolicy;
 import com.example.youthy.YouthPolicyRepository;
+import com.example.youthy.chungheon2.Region;
+import com.example.youthy.repository.RegionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,6 +14,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -21,6 +24,7 @@ public class PolicyUpdateService {
 
     private final ExternalPolicyApiClient apiClient;
     private final YouthPolicyRepository youthPolicyRepository;
+    private final RegionRepository regionRepository;
 
     /**
      * 외부 API로부터 모든 정책 데이터를 가져와 데이터베이스를 업데이트(저장)합니다.
@@ -34,6 +38,9 @@ public class PolicyUpdateService {
         final int pageSize = 100; // API가 허용하는 최대 사이즈
         int totalUpdatedCount = 0;
 
+        Map<String, Region> regionMap = regionRepository.findAll().stream()
+                .collect(Collectors.toMap(Region::getCode, region -> region));
+
         while (true) {
             List<ExternalPolicyDto.YouthPolicyItem> fetchedItems = apiClient.fetchPolicies(pageNum, pageSize);
 
@@ -44,7 +51,7 @@ public class PolicyUpdateService {
 
             List<YouthPolicy> policiesToSave = fetchedItems.stream()
                     .filter(this::isPolicyActive)
-                    .map(ExternalPolicyDto.YouthPolicyItem::toEntity)
+                    .map(item -> item.toEntity(regionMap))
                     .collect(Collectors.toList());
 
             youthPolicyRepository.saveAll(policiesToSave); // 가져온 데이터를 DB에 저장

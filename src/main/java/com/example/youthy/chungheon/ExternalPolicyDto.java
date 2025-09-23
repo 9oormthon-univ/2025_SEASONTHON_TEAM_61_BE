@@ -1,6 +1,7 @@
 package com.example.youthy.chungheon;
 
 import com.example.youthy.YouthPolicy;
+import com.example.youthy.chungheon2.Region;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 
 /**
@@ -85,7 +87,7 @@ public class ExternalPolicyDto {
          * 여기서 데이터를 우리 서비스에 맞게 '가공'하고 '조합'합니다.
          * @return YouthPolicy 엔티티
          */
-        public YouthPolicy toEntity() {
+        public YouthPolicy toEntity(Map<String, Region> regionMap) {
             DateRange parsedDates = parseApplicationPeriod(this.aplyYmd);
             // 1. 먼저 residence를 제외한 기본 YouthPolicy 객체를 생성합니다.
             YouthPolicy policy = YouthPolicy.builder()
@@ -114,12 +116,12 @@ public class ExternalPolicyDto {
                     .requiredDocuments(this.sbmsnDcmntCn)
                     .build();
 
-            // 2. 생성된 policy 객체에 residence 정보(들)를 추가합니다.
             if (StringUtils.hasText(this.zipCd)) {
                 String[] zipCodes = this.zipCd.split(",");
                 for (String code : zipCodes) {
-                    if (StringUtils.hasText(code)) {
-                        policy.addResidence(code.trim());
+                    Region region = regionMap.get(code.trim()); // ✅ Map에서 Region 객체를 찾음
+                    if (region != null) {
+                        policy.addResidence(region); // ✅ 찾은 Region 객체로 관계 설정
                     }
                 }
             }

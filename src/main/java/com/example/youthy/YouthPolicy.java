@@ -1,5 +1,6 @@
 package com.example.youthy;
 
+import com.example.youthy.chungheon2.Region;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -125,8 +126,12 @@ public class YouthPolicy {
         this.requiredDocuments = requiredDocuments;
     }
     //== 연관관계 편의 메서드 ==//
-    public void addResidence(String zipCode) {
-        PolicyResidence residence = new PolicyResidence(this, zipCode);
+    /**
+     * 정책에 해당하는 지역 정보를 추가합니다.
+     * @param region '지역 사전'에서 조회한 Region 엔티티
+     */
+    public void addResidence(Region region) {
+        PolicyResidence residence = new PolicyResidence(this, region);
         this.residences.add(residence);
     }
     public void increaseViewCount(){

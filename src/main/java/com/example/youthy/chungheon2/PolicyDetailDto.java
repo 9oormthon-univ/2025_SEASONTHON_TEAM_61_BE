@@ -3,6 +3,9 @@ package com.example.youthy.chungheon2;
 import com.example.youthy.YouthPolicy;
 import lombok.Getter;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * 정책 상세 조회 시 반환될 모든 정보를 담는 DTO
  */
@@ -31,6 +34,7 @@ public class PolicyDetailDto {
     private final String applicationSite;
     private final String requiredDocuments;
     private final int viewCount;
+    private final List<String> residences;
 
     // YouthPolicy 엔티티를 PolicyDetailDto로 변환하는 생성자
     public PolicyDetailDto(YouthPolicy entity) {
@@ -56,5 +60,8 @@ public class PolicyDetailDto {
         this.applicationSite = entity.getApplicationSite();
         this.requiredDocuments = entity.getRequiredDocuments();
         this.viewCount = entity.getViewCount();
+        this.residences = entity.getResidences().stream()
+                .map(residence -> residence.getRegion().getName())
+                .collect(Collectors.toList());
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * YouthPolicy 엔티티에 대한 데이터 접근을 처리하는 JpaRepository 인터페이스입니다.
@@ -42,6 +43,11 @@ public interface YouthPolicyRepository extends JpaRepository<YouthPolicy, String
      * @return 페이징된 정책 엔티티 목록
      */
     Page<YouthPolicy> findByPolicyField(String policyField, Pageable pageable);
+    Optional<YouthPolicy> findByPolicyNo(String policyNo);
 
+    /**
+     * 정책번호 존재 여부 확인.
+     */
+    boolean existsByPolicyNo(String policyNo);
 }
 

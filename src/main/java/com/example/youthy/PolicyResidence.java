@@ -1,5 +1,6 @@
 package com.example.youthy;
 
+import com.example.youthy.chungheon2.Region;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,11 +19,13 @@ public class PolicyResidence {
     @JoinColumn(name = "policy_no")
     private YouthPolicy youthPolicy;
 
-    @Column(name = "zip_code", length = 10)
-    private String zipCode;
+    // ✅ String zipCode 대신 Region 엔티티를 참조하도록 변경
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "region_code")
+    private Region region;
 
-    public PolicyResidence(YouthPolicy youthPolicy, String zipCode) {
+    public PolicyResidence(YouthPolicy youthPolicy, Region region) {
         this.youthPolicy = youthPolicy;
-        this.zipCode = zipCode;
+        this.region = region;
     }
 }
